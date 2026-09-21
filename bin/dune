@@ -1,0 +1,4 @@
+(executable
+ (public_name fictol)
+ (name main)
+ (libraries fictol))

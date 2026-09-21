@@ -1,0 +1,3 @@
+(library
+ (name fictol)
+ (libraries llvm llvm.analysis llvm.bitwriter llvm.target llvm.executionengine))
