@@ -126,48 +126,48 @@ binop_operand :
   | id { $1 }
 
 plus_chain :
-  | binop_expr PLUS binop_expr { EPrim2(Plus, $1, $3, full_span())}
-  | plus_chain PLUS binop_expr { EPrim2(Plus, $1, $3, full_span())}
+  | binop_operand PLUS binop_operand { EPrim2(Plus, $1, $3, full_span())}
+  | plus_chain PLUS binop_operand { EPrim2(Plus, $1, $3, full_span())}
 
 minus_chain :
-  | binop_expr MINUS binop_expr { EPrim2(Minus, $1, $3, full_span())}
-  | minus_chain MINUS binop_expr { EPrim2(Minus, $1, $3, full_span())}
+  | binop_operand MINUS binop_operand { EPrim2(Minus, $1, $3, full_span())}
+  | minus_chain MINUS binop_operand { EPrim2(Minus, $1, $3, full_span())}
 
 times_chain :
-  | binop_expr TIMES binop_expr { EPrim2(Times, $1, $3, full_span())}
-  | times_chain TIMES binop_expr { EPrim2(Times, $1, $3, full_span())}
+  | binop_operand TIMES binop_operand { EPrim2(Times, $1, $3, full_span())}
+  | times_chain TIMES binop_operand { EPrim2(Times, $1, $3, full_span())}
 
 divide_chain :
-  | binop_expr DIVIDE binop_expr { EPrim2(Divide, $1, $3, full_span())}
-  | divide_chain DIVIDE binop_expr { EPrim2(Divide, $1, $3, full_span())}
+  | binop_operand DIVIDE binop_operand { EPrim2(Divide, $1, $3, full_span())}
+  | divide_chain DIVIDE binop_operand { EPrim2(Divide, $1, $3, full_span())}
 
 greater_chain :
-  | binop_expr GREATER binop_expr { EPrim2(Greater, $1, $3, full_span())}
-  | greater_chain GREATER binop_expr { EPrim2(Greater, $1, $3, full_span())}
+  | binop_operand GREATER binop_operand { EPrim2(Greater, $1, $3, full_span())}
+  | greater_chain GREATER binop_operand { EPrim2(Greater, $1, $3, full_span())}
 
 lessspace_chain :
-  | binop_expr LESSSPACE binop_expr { EPrim2(Less, $1, $3, full_span())}
-  | lessspace_chain LESSSPACE binop_expr { EPrim2(Less, $1, $3, full_span())}
+  | binop_operand LESSSPACE binop_operand { EPrim2(Less, $1, $3, full_span())}
+  | lessspace_chain LESSSPACE binop_operand { EPrim2(Less, $1, $3, full_span())}
 
 greatereq_chain :
-  | binop_expr GREATEREQ binop_expr { EPrim2(GreaterEq, $1, $3, full_span())}
-  | greatereq_chain GREATEREQ binop_expr { EPrim2(GreaterEq, $1, $3, full_span())}
+  | binop_operand GREATEREQ binop_operand { EPrim2(GreaterEq, $1, $3, full_span())}
+  | greatereq_chain GREATEREQ binop_operand { EPrim2(GreaterEq, $1, $3, full_span())}
 
 lesseq_chain :
-  | binop_expr LESSEQ binop_expr { EPrim2(LessEq, $1, $3, full_span())}
-  | lesseq_chain LESSEQ binop_expr { EPrim2(LessEq, $1, $3, full_span())}
+  | binop_operand LESSEQ binop_operand { EPrim2(LessEq, $1, $3, full_span())}
+  | lesseq_chain LESSEQ binop_operand { EPrim2(LessEq, $1, $3, full_span())}
 
 eqeq_chain :
-  | binop_expr EQEQ binop_expr { EPrim2(Eq, $1, $3, full_span())}
-  | eqeq_chain EQEQ binop_expr { EPrim2(Eq, $1, $3, full_span())}
+  | binop_operand EQEQ binop_operand { EPrim2(Eq, $1, $3, full_span())}
+  | eqeq_chain EQEQ binop_operand { EPrim2(Eq, $1, $3, full_span())}
 
 and_chain :
-  | binop_expr AND binop_expr { EPrim2(And, $1, $3, full_span())}
-  | and_chain AND binop_expr { EPrim2(And, $1, $3, full_span())}
+  | binop_operand AND binop_operand { EPrim2(And, $1, $3, full_span())}
+  | and_chain AND binop_operand { EPrim2(And, $1, $3, full_span())}
 
 or_chain :
-  | binop_expr OR binop_expr { EPrim2(Or, $1, $3, full_span())}
-  | or_chain OR binop_expr { EPrim2(Or, $1, $3, full_span())}
+  | binop_operand OR binop_operand { EPrim2(Or, $1, $3, full_span())}
+  | or_chain OR binop_operand { EPrim2(Or, $1, $3, full_span())}
 
 decl :
   | DEF ID LPARENNOSPACE RPAREN COLON expr { DFun($2, [], $6, full_span()) }
