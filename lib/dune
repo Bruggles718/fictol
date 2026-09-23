@@ -1,3 +1,18 @@
 (library
  (name fictol)
- (libraries llvm llvm.analysis llvm.bitwriter llvm.target llvm.executionengine))
+ (libraries 
+  llvm 
+  llvm.analysis 
+  llvm.bitwriter 
+  llvm.target 
+  llvm.executionengine 
+  stdint 
+  ounit2
+  extlib))
+
+(ocamllex
+ (modules lexer))
+
+(menhir
+ (modules parser)
+ (flags --fixed-exception))

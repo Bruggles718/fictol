@@ -22,8 +22,12 @@
  (depends ocaml
   dune
   (llvm (>= 18))       ; adjust to the version you target
-  menhir)
+  menhir
+  stdint
+  ounit2
+  extlib)
  (tags
   ("add topics" "to describe" your project)))
 
+(using menhir 3.0)
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
