@@ -4,6 +4,24 @@ type tag = int
 
 type sourcespan = Lexing.position * Lexing.position
 
+type 'a typ =
+  | TyVar of string * 'a
+  | TyCon of string * 'a
+  | TyArrow of 'a typ list * 'a typ
+  | TyBlank of 'a
+  | TyApp of 'a typ * 'a typ list
+
+let rec untagTyp t =
+  match t with
+  | TyVar (name, _) -> TyVar(name, ())
+  | TyCon (name,_) -> TyCon(name, ())
+  | TyArrow (args, ret_type) -> TyArrow(List.map untagTyp args, untagTyp ret_type)
+  | TyBlank(_) -> TyBlank(())
+  | TyApp (generic_type, generic_param_types) -> TyApp(untagTyp generic_type, List.map untagTyp generic_param_types)
+
+type 'a scheme =
+  | SForall of string list * 'a typ * 'a
+
 type prim1 =
   | Add1
   | Sub1
@@ -27,22 +45,16 @@ type prim2 =
 
 and 'a bind =
   | BBlank of 'a
-  | BName of string * bool * 'a
+  | BName of string * bool * 'a typ * 'a
   (* | BTuple of 'a bind list * 'a *)
 
 and 'a binding = 'a bind * 'a expr * 'a
 
 and call_type =
-  | CCC
-  | TailCC
+  | Extern of string
+  | FictolFunc
+  | FictolClosure
   | Unknown
-
-and 'a typ =
-  | TyVar of string * 'a
-  | TyCon of string * 'a
-  | TyArrow of 'a typ list * 'a typ
-  | TyBlank of 'a
-  | TyApp of 'a typ * 'a typ list
 
 and lit = 
   | LitInt of uint128
@@ -67,11 +79,11 @@ and 'a expr =
   (* | EString of string * 'a *)
 
 type 'a decl =
-  | DFun of string * 'a bind list * 'a expr * 'a
+  | DFun of string * 'a bind list * 'a expr * call_type * 'a typ * 'a
 
 type 'a program = Program of 'a decl list * 'a
 
-type 'a immexpr =
+(* type 'a immexpr =
   (* immediate expressions *)
   | ImmInt32 of int32 * 'a
   | ImmBool of bool * 'a
@@ -98,6 +110,6 @@ and 'a aexpr =
   | ACExpr of 'a cexpr
 
 and 'a adecl =
-  | AFun of string * 'a bind list * 'a aexpr * 'a
+  | AFun of string * 'a bind list * 'a aexpr * 'a *)
 
-and 'a aprogram = AProgram of 'a adecl list * 'a
+(* and 'a aprogram = AProgram of 'a adecl list * 'a *)

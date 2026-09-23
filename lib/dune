@@ -13,6 +13,5 @@
 (ocamllex
  (modules lexer))
 
-(menhir
- (modules parser)
- (flags --fixed-exception))
+(ocamlyacc
+  (modules parser))

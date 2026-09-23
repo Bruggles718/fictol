@@ -9,7 +9,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %token <string> STRING
 %token <Stdint.uint128> INT
 %token <string> ID
-%token EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
+%token ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
 
 %right SEMI
 %left COLON COLONEQ
@@ -82,17 +82,17 @@ id :
 //   | EQEQ { Eq }
 
 binop_expr :
-  | plus_chain
-  | minus_chain
-  | times_chain
-  | divide_chain
-  | greater_chain
-  | lessspace_chain
-  | greatereq_chain
-  | lesseq_chain
-  | eqeq_chain
-  | and_chain
-  | or_chain
+  | plus_chain { $1 }
+  | minus_chain { $1 }
+  | times_chain { $1 }
+  | divide_chain { $1 }
+  | greater_chain { $1 }
+  | lessspace_chain { $1 }
+  | greatereq_chain { $1 }
+  | lesseq_chain { $1 }
+  | eqeq_chain { $1 }
+  | and_chain { $1 }
+  | or_chain { $1 }
   // | binop_expr prim2 binop_operand %prec PLUS { EPrim2($2, $1, $3, full_span()) }
   // | binop_operand COLONEQ binop_expr %prec COLONEQ {
   //     match $1 with
@@ -170,8 +170,19 @@ or_chain :
   | or_chain OR binop_operand { EPrim2(Or, $1, $3, full_span())}
 
 decl :
-  | DEF ID LPARENNOSPACE RPAREN COLON expr { DFun($2, [], $6, full_span()) }
-  | DEF ID LPARENNOSPACE binds RPAREN COLON expr { DFun($2, $4, $7, full_span()) }
+  | extern_opt DEF ID LPARENNOSPACE params_opt RPAREN typ_opt COLON expr { DFun($3, $5, $9, $1, $7, full_span()) }
+
+extern_opt:
+  | /* empty */       { FictolFunc }
+  | EXTERN STRING     { Extern($2) }
+
+params_opt:
+  | /* empty */       { [] }
+  | binds             { $1 }
+
+typ_opt:
+  | /* empty */ { TyBlank(full_span()) }
+  | ARROW ID { TyCon($2, full_span()) }
 
 binds :
   | bind { [$1] }
@@ -187,7 +198,8 @@ blankbind :
   | UNDERSCORE %prec SEMI { BBlank(full_span()) }
 
 namebind :
-  | ID %prec SEMI { BName($1, false, full_span()) }
+  | ID %prec SEMI { BName($1, false, TyBlank(full_span()), full_span()) }
+  | ID COLON ID %prec SEMI { BName($1, false, TyCon($3, full_span()), full_span()) }
 
 decls :
   | decl { [$1] }

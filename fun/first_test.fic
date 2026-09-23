@@ -1,2 +1,9 @@
-def main():
-    let x = 5 in 5
+def greater_than(a: i32, b: i32) -> bool:
+    a > b
+
+def main() -> i32:
+    let a: i32 = 7, b: i32 = 5 in
+    if greater_than(a, b):
+        a
+    else:
+        b

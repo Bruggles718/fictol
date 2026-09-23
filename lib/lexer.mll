@@ -8,13 +8,11 @@ let strbuf = Buffer.create 128
 
 let ignore_new_line lexbuf =
   let lcp = lexbuf.lex_curr_p in
-  if lcp != dummy_pos then
+  if lcp != dummy_pos then begin
     lexbuf.lex_curr_p <-
-      { lcp with
-        pos_lnum = lcp.pos_lnum + 1;
-        pos_bol = lcp.pos_cnum;
-      };
+      { lcp with pos_lnum = lcp.pos_lnum + 1; pos_bol = lcp.pos_cnum };
     lexbuf.lex_start_p <- lexbuf.lex_curr_p
+  end
 
 }
 
@@ -81,6 +79,7 @@ rule token = parse
   | "end" { END }
   | "rec" { REC }
   | "extern" { EXTERN }
+  | "->" { ARROW }
   | "." { DOT }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | '"' { Buffer.clear strbuf; string_literal lexbuf }

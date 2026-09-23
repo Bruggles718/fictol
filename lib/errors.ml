@@ -25,6 +25,10 @@ exception Unsupported of string * sourcespan
 
 exception InternalCompilerError of string (* Major failure: message to show *)
 
+exception CannotInferType of string
+
+exception InconsistentType of string
+
 (* name binding, where defined *)
 (* exception LetRecNonFunction of sourcespan bind * sourcespan  *)
 
@@ -45,6 +49,8 @@ let known_compiletime_exn exn =
   | DuplicateId _
   | DuplicateFun _
   | Unsupported _
+  | CannotInferType _
+  | InconsistentType _
   | Arity _ -> true
   | _ -> false
 ;;
@@ -74,6 +80,8 @@ let print_error exn =
   | DeclArity (name, num_args, num_types, loc) ->
       sprintf "The function %s, defined at %s, has %d arguments but only %d types provided" name
         (string_of_sourcespan loc) num_args num_types
+  | CannotInferType (msg) -> "Cannot infer type: " ^ msg
+  | InconsistentType (msg) -> "Inconsistent type: " ^ msg
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 

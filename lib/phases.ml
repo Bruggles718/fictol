@@ -22,11 +22,12 @@ type phase =
   (* | Preprocessed of string *)
   | Parsed of sourcespan program
   | WellFormed of sourcespan program
+  | TypeChecked of sourcespan program
   | Renamed of tag program
   | Desugared of sourcespan program
   (* | AddedNatives of sourcespan program *)
-  | Tagged of tag program
-  | ANFed of tag aprogram
+  (* | Tagged of tag program
+  | ANFed of tag aprogram *)
   | Result of string
 
 (* These functions simply apply a phase constructor, because OCaml
@@ -39,13 +40,15 @@ let parsed p = Parsed p
 
 let well_formed p = WellFormed p
 
+let type_checked p = TypeChecked p
+
 let renamed p = Renamed p
 
 let desugared p = Desugared p
 
-let tagged p = Tagged p
+(* let tagged p = Tagged p
 
-let anfed p = ANFed p
+let anfed p = ANFed p *)
 
 (* let add_natives p = AddedNatives p *)
 
