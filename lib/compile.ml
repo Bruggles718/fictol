@@ -220,8 +220,115 @@ let ftv_scheme (s : 'a scheme) : StringSet.t =
 let ftv_env (e : 'a typ envt) : StringSet.t =
   let mapped = StringMap.map (fun (typ) -> ftv_typ typ) e in
   StringMap.fold (fun _ value acc -> StringSet.union acc value) mapped StringSet.empty
-(* 
-let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst = *)
+
+let occurs (name : string) (t : 'a typ) =
+  StringSet.mem name (ftv_typ t)
+
+let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst =
+  let unify_tyvar_other tyvar other =
+    if occurs tyvar other then
+      []
+    else
+      [(tyvar, other)]
+  in
+  let unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty =
+    let unified_args = 
+        (try
+          List.combine t1_args t2_args
+        with
+        | exn -> failwith "Unification failure: different arities")
+        |> List.map (fun (t1_arg, t2_arg) -> unify t1_arg t2_arg)
+        |> List.concat
+      in
+      let unified_rets = unify t1_ret_ty t2_ret_ty in
+      unified_args @ unified_rets
+  in
+  match t1, t2 with
+  | TyVar(name, _), other
+  | other, TyVar(name, _) -> unify_tyvar_other name other
+  | TyCon(name1, _), TyCon(name2, _) -> []
+  | TyArrow(t1_args, t1_ret_ty, t1_tag), TyArrow(t2_args, t2_ret_ty, t2_tag)
+  | TyApp(t1_ret_ty, t1_args, t1_tag), TyApp(t2_ret_ty, t2_args, t2_tag) ->
+    unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
+  | _ -> failwith "Unification failure"
+
+let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
+
+let t_i32 = TyCon("i32", dummy_span)
+let t_bool = TyCon("bool", dummy_span)
+
+let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
+                  (e : sourcespan expr)
+                  (* ... some bookkeeping ... *)
+                  : ( sourcespan typ subst (* the resulting substitution *)
+                    * sourcespan typ)      (* the resulting type *) =
+  let gensym =
+    let count = ref 0 in
+    let next () =
+      count := !count + 1;
+      !count
+    in fun str -> sprintf "%s_%d" str (next ())
+  in
+  let instantiate (s : 'a scheme) : 'a typ =
+    match s with
+    | SForall(args, typ, tag) ->
+      let sub = List.map (fun s -> (s, (TyVar(gensym "T", tag)))) args in
+      apply_subst_typ sub typ
+  in
+  match e with
+  | ELiteral(LitBool(_), _) -> ([], t_bool)
+  | ELiteral (LitInt(n), loc) -> ([], t_i32)
+  | EId (x, loc) -> ([], instantiate (StringMap.find x env))
+  | EPrim1 (op, e, _) -> 
+      let sch = (
+        match op with
+        | Print | PrintStack -> SForall(["X"], TyArrow([(TyVar("X", dummy_span))], (TyVar("X", dummy_span)), dummy_span), dummy_span)
+        | Add1 | Sub1 -> SForall([], TyArrow([t_i32], t_i32, dummy_span), dummy_span)
+        | Not -> SForall([], TyArrow([t_bool], t_bool, dummy_span), dummy_span)
+      ) in
+      let sch_inst = instantiate sch in
+      let (e_subst, e_typ) = infer_exp env e in
+      let subbed = apply_subst_typ e_subst e_typ in
+      let ret_typ = TyVar(gensym "prim1result", dummy_span) in
+      let prim_ty = TyArrow([subbed], ret_typ, dummy_span) in
+      let result_subst = unify sch_inst prim_ty in
+      (result_subst, prim_ty)
+  | EPrim2 (op, l, r, _) ->
+      let sch = (
+        match op with
+        | Plus | Minus | Times | Divide -> SForall([], TyArrow([t_i32; t_i32], t_i32, dummy_span), dummy_span)
+        | Greater | GreaterEq | Less | LessEq -> SForall([], TyArrow([t_i32; t_i32], t_bool, dummy_span), dummy_span)
+        | Eq -> SForall(["X"], TyArrow([(TyVar("X", dummy_span)); (TyVar("X", dummy_span))], t_bool, dummy_span), dummy_span)
+        | And | Or -> SForall([], TyArrow([t_bool; t_bool], t_bool, dummy_span), dummy_span)
+        | _ -> failwith "unsupported"
+      ) in
+      let sch_inst = instantiate sch in
+      let (l_subst, l_typ) = infer_exp env l in
+      let (r_subst, r_typ) = infer_exp env r in
+      let l_subbed = apply_subst_typ l_subst l_typ in
+      let r_subbed = apply_subst_typ r_subst r_typ in
+      let ret_typ = TyVar(gensym "prim2result", dummy_span) in
+      let prim_ty = TyArrow([l_subbed; r_subbed], ret_typ, dummy_span) in
+      let result_subst = unify sch_inst prim_ty in
+      (result_subst, prim_ty)
+  (* | EIf (c, t, f, _) -> wf_E_list [c; t; f] env
+  | ELet (binds, body, _) ->
+      let env2, _, err_lst =
+        List.fold_left
+          (fun (scope_env, shadow_env, err_lst) (x, e, _) ->
+            binding_errs (scope_env, shadow_env, err_lst) x (wf_E e scope_env) )
+          (env, [], []) binds
+      in
+      err_lst @ wf_E body env2
+  (* | EApp (_, args, Native, _) -> wf_E_list args env *)
+  | EApp (EId(name, id_loc), args, _, loc) ->
+      let fun_err = wf_E (EId(name, id_loc)) env in
+      fun_err @ wf_E_list args env
+  | EApp (closure, args, _, loc) ->
+      (* let fun_err = wf_E closure env in
+      fun_err @ wf_E_list args env *)
+      [Unsupported ("Calling closures is not yet supported", loc)]
+  | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env *)
   
 (* let rec type_check_prog (prog: sourcespan program) : sourcespan program fallible =
   match prog with
