@@ -22,7 +22,6 @@
  (depends ocaml
   dune
   (llvm (>= 18))       ; adjust to the version you target
-  ocamlyacc
   stdint
   ounit2
   extlib)

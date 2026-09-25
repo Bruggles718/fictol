@@ -2,6 +2,7 @@ open Printf
 open Pretty
 open Phases
 open Exprs
+open Types
 open Errors
 open Lexing
 open Llvm
@@ -14,9 +15,6 @@ type 'a name_envt = (string * 'a) list
 type 'a tag_envt = (tag * 'a) list
 
 type 'a envt = 'a StringMap.t
-
-type 'a type_envt = 'a typ envt
-type 'a scheme_envt = 'a scheme envt
 
 let rec find ls x =
   match ls with
@@ -162,9 +160,35 @@ let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 
   | TyBlank(t) -> TyBlank(t)
   | TyApp (ret_typ, args) -> TyApp((subst_var_typ (tyvar, to_typ) ret_typ), List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args)
 
+let rec subst_var_typ_in_scheme ((tyvar : string), (to_typ : 'a typ)) (scheme_args : string list) (in_typ : 'a typ) =
+  match in_typ with
+  | TyVar (name, t) -> 
+    (
+      if name = tyvar then
+        if (List.mem name scheme_args) then
+          in_typ
+        else 
+          to_typ
+      else
+        in_typ
+    )
+  | TyCon (name, t) -> TyCon(name, t)
+  | TyArrow (args, ret_type) -> TyArrow(List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type))
+  | TyBlank(t) -> TyBlank(t)
+  | TyApp (ret_typ, args) -> TyApp((subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_typ), List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args)
+
+
 let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a scheme) : 'a scheme =
   match in_scheme with
   | SForall(args, typ, t) -> 
+      SForall(args, (subst_var_typ_in_scheme (tyvar, to_typ) args typ), t)
+
+(* let apply_subst_typ    (subst : 'a typ subst) (t : 'a typ) : 'a typ =  *)
+    
+(* let apply_subst_scheme (subst : 'a typ subst) (s : 'a scheme) : 'a scheme = ... *)
+(* let apply_subst_typenv (subst : 'a typ subst) (env : 'a typ envt) : 'a typ envt = ... *)
+(* let apply_subst_schenv (subst : 'a typ subst) (env : 'a scheme envt) : 'a scheme envt = ... *)
+(* let apply_subst_substs (subst : 'a typ subst) (sub : 'a typ subst) : 'a typ subst = ... *)
 
 
 (* let rec type_check_prog (prog: sourcespan program) : sourcespan program fallible =

@@ -1,26 +1,9 @@
 open Stdint
+open Types
 
 type tag = int
 
 type sourcespan = Lexing.position * Lexing.position
-
-type 'a typ =
-  | TyVar of string * 'a
-  | TyCon of string * 'a
-  | TyArrow of 'a typ list * 'a typ
-  | TyBlank of 'a
-  | TyApp of 'a typ * 'a typ list
-
-let rec untagTyp t =
-  match t with
-  | TyVar (name, _) -> TyVar(name, ())
-  | TyCon (name,_) -> TyCon(name, ())
-  | TyArrow (args, ret_type) -> TyArrow(List.map untagTyp args, untagTyp ret_type)
-  | TyBlank(_) -> TyBlank(())
-  | TyApp (generic_type, generic_param_types) -> TyApp(untagTyp generic_type, List.map untagTyp generic_param_types)
-
-type 'a scheme =
-  | SForall of string list * 'a typ * 'a
 
 type prim1 =
   | Add1

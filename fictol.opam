@@ -11,9 +11,11 @@ doc: "https://url/to/documentation"
 bug-reports: "https://github.com/username/reponame/issues"
 depends: [
   "ocaml"
-  "dune" {>= "3.20"}
+  "dune" {>= "3.24"}
   "llvm" {>= "18"}
-  "menhir"
+  "stdint"
+  "ounit2"
+  "extlib"
   "odoc" {with-doc}
 ]
 build: [

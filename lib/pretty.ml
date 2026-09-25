@@ -1,4 +1,5 @@
 open Exprs
+open Types
 open Format
 open Lexing
 open Stdint
