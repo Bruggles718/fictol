@@ -74,9 +74,9 @@ let name_of_op2 op =
 let rec string_of_typ (t: 'a typ) : string =
   match t with
   | TyVar(name, _) | TyCon(name, _) -> name
-  | TyArrow(ty_lst, ret_ty) -> "(" ^ ExtString.String.join ", " (List.map string_of_typ ty_lst) ^ ") -> " ^ (string_of_typ ret_ty)
+  | TyArrow(ty_lst, ret_ty, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_typ ty_lst) ^ ") -> " ^ (string_of_typ ret_ty)
   | TyBlank _ -> ""
-  | TyApp(generic_ty, generic_param_ty_lst) ->
+  | TyApp(generic_ty, generic_param_ty_lst, _) ->
       (string_of_typ generic_ty) ^ 
       "<" ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst) ^ ">"
 

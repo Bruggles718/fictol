@@ -156,9 +156,9 @@ let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 
         (TyVar(name, t))
     )
   | TyCon (name, t) -> TyCon(name, t)
-  | TyArrow (args, ret_type) -> TyArrow(List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args, (subst_var_typ (tyvar, to_typ) ret_type))
+  | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args, (subst_var_typ (tyvar, to_typ) ret_type), t)
   | TyBlank(t) -> TyBlank(t)
-  | TyApp (ret_typ, args) -> TyApp((subst_var_typ (tyvar, to_typ) ret_typ), List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args)
+  | TyApp (ret_typ, args, t) -> TyApp((subst_var_typ (tyvar, to_typ) ret_typ), List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args, t)
 
 let rec subst_var_typ_in_scheme ((tyvar : string), (to_typ : 'a typ)) (scheme_args : string list) (in_typ : 'a typ) =
   match in_typ with
@@ -173,9 +173,9 @@ let rec subst_var_typ_in_scheme ((tyvar : string), (to_typ : 'a typ)) (scheme_ar
         in_typ
     )
   | TyCon (name, t) -> TyCon(name, t)
-  | TyArrow (args, ret_type) -> TyArrow(List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type))
+  | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type), t)
   | TyBlank(t) -> TyBlank(t)
-  | TyApp (ret_typ, args) -> TyApp((subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_typ), List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args)
+  | TyApp (ret_typ, args, t) -> TyApp((subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_typ), List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, t)
 
 
 let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a scheme) : 'a scheme =
@@ -183,14 +183,46 @@ let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a s
   | SForall(args, typ, t) -> 
       SForall(args, (subst_var_typ_in_scheme (tyvar, to_typ) args typ), t)
 
-(* let apply_subst_typ    (subst : 'a typ subst) (t : 'a typ) : 'a typ =  *)
+let apply_subst_typ    (subst : 'a typ subst) (t : 'a typ) : 'a typ = 
+  List.fold_left (fun acc sub -> subst_var_typ sub acc) t subst
     
-(* let apply_subst_scheme (subst : 'a typ subst) (s : 'a scheme) : 'a scheme = ... *)
-(* let apply_subst_typenv (subst : 'a typ subst) (env : 'a typ envt) : 'a typ envt = ... *)
-(* let apply_subst_schenv (subst : 'a typ subst) (env : 'a scheme envt) : 'a scheme envt = ... *)
-(* let apply_subst_substs (subst : 'a typ subst) (sub : 'a typ subst) : 'a typ subst = ... *)
+let apply_subst_scheme (subst : 'a typ subst) (s : 'a scheme) : 'a scheme = 
+  List.fold_left (fun acc sub -> subst_var_scheme sub acc) s subst
 
+let apply_subst_typenv (subst : 'a typ subst) (env : 'a typ envt) : 'a typ envt = 
+  StringMap.map (fun (typ) -> apply_subst_typ subst typ) env
+let apply_subst_schenv (subst : 'a typ subst) (env : 'a scheme envt) : 'a scheme envt =
+  StringMap.map (fun (typ) -> apply_subst_scheme subst typ) env
+let apply_subst_subst (sub1 : 'a typ subst) (sub2 : 'a typ subst) : 'a typ subst =
+  List.map (fun (tyvar, to_typ) -> (tyvar, (apply_subst_typ sub1 to_typ))) sub2
 
+let compose_subst (sub1 : 'a typ subst) (sub2 : 'a typ subst) : 'a typ subst =
+  sub1 @ (apply_subst_subst sub1 sub2)
+
+let rec ftv_typ (t : 'a typ) : StringSet.t =
+  match t with
+  | TyCon _ -> StringSet.empty
+  | TyVar(name, _) -> StringSet.singleton name
+  | TyArrow(args, ret, _) ->
+    List.fold_right (fun t ftvs -> StringSet.union (ftv_typ t) ftvs)
+                    args
+                    (ftv_typ ret)
+  | TyApp(typ, args, _) ->
+    List.fold_right (fun t ftvs -> StringSet.union (ftv_typ t) ftvs)
+                    args
+                    (ftv_typ typ)
+  | TyBlank _ -> StringSet.empty
+;;
+let ftv_scheme (s : 'a scheme) : StringSet.t =
+  match s with
+  | SForall(args, typ, _) ->
+     StringSet.diff (ftv_typ typ) (StringSet.of_list args)
+let ftv_env (e : 'a typ envt) : StringSet.t =
+  let mapped = StringMap.map (fun (typ) -> ftv_typ typ) e in
+  StringMap.fold (fun _ value acc -> StringSet.union acc value) mapped StringSet.empty
+(* 
+let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst = *)
+  
 (* let rec type_check_prog (prog: sourcespan program) : sourcespan program fallible =
   match prog with
   | Program(decls, _) ->
