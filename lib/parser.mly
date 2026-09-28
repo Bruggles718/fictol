@@ -13,6 +13,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 
 %right SEMI
 %left COLON COLONEQ
+%left UMINUS
 %left PLUS MINUS TIMES DIVIDE GREATER LESSSPACE GREATEREQ LESSEQ EQEQ AND OR
 %left LPARENNOSPACE
 
@@ -104,6 +105,7 @@ binop_expr :
 
 binop_operand :
   // Primops
+  | MINUS binop_operand %prec UMINUS { EPrim1(Neg, $2, full_span())}
   | prim1 LPARENNOSPACE expr RPAREN { EPrim1($1, $3, full_span()) }
   // Extern
   // | EXTERN id LPARENNOSPACE exprs RPAREN %prec LPARENNOSPACE { EApp($2, $4, CCC, full_span()) }

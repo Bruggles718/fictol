@@ -11,6 +11,7 @@ type prim1 =
   | Print
   | Not
   | PrintStack
+  | Neg
 
 type prim2 =
   | Plus

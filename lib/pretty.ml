@@ -28,6 +28,7 @@ let string_of_op1 op =
   | Print -> "print"
   | PrintStack -> "printStack"
   | Not -> "!"
+  | Neg -> "-"
 ;;
 
 let name_of_op1 op =
@@ -37,6 +38,7 @@ let name_of_op1 op =
   | Print -> "Print"
   | PrintStack -> "PrintStack"
   | Not -> "Not"
+  | Neg -> "Neg"
 ;;
 
 let string_of_op2 op =

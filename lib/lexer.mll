@@ -17,7 +17,8 @@ let ignore_new_line lexbuf =
 }
 
 let dec_digit = ['0'-'9']
-let signed_int = dec_digit+ | ('-' dec_digit+)
+(* let signed_int = dec_digit+ | ('-' dec_digit+) *)
+let unsigned_int = dec_digit+
 
 let ident = ['a'-'z' 'A'-'Z' '_']['a'-'z' 'A'-'Z' '0'-'9' '_']*
 
@@ -37,7 +38,7 @@ rule token = parse
   | '\n' "<" { ignore_new_line lexbuf; LESSSPACE }
   | blank { token lexbuf }
   | '\n' { new_line lexbuf; token lexbuf }
-  | signed_int as x { INT (Stdint.Uint128.of_string x) }
+  | unsigned_int as x { INT (Stdint.Uint128.of_string x) }
   | ":=" { COLONEQ }
   | ":" { COLON }
   | "def" { DEF }

@@ -214,7 +214,7 @@ let desugar (p : sourcespan program) : sourcespan program =
     | EPrim1 (op, body, tag) -> (
       match op with
       | Not -> EIf (helpE body, ELiteral (LitBool(false), tag), ELiteral (LitBool(true), tag), tag)
-      | Add1 | Sub1 | Print | PrintStack ->
+      | Add1 | Sub1 | Print | PrintStack | Neg ->
           EPrim1 (op, helpE body, tag) )
     | EPrim2 (op, left, right, tag) -> (
       match op with
@@ -458,7 +458,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       let sch = (
         match op with
         | Print | PrintStack -> SForall(["X"], TyArrow([(TyVar("X", dummy_span))], (TyVar("X", dummy_span)), dummy_span), dummy_span)
-        | Add1 | Sub1 -> SForall([], TyArrow([t_i32], t_i32, dummy_span), dummy_span)
+        | Add1 | Sub1 | Neg -> SForall([], TyArrow([t_i32], t_i32, dummy_span), dummy_span)
         | Not -> SForall([], TyArrow([t_bool], t_bool, dummy_span), dummy_span)
       ) in
       let sch_inst = instantiate sch in
