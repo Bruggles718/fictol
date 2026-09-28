@@ -88,6 +88,8 @@ let rec string_of_typ (t: 'a typ) : string =
   | TyApp(generic_ty, generic_param_ty_lst, _) ->
       (string_of_typ generic_ty) ^ 
       "<" ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst) ^ ">"
+  | TyPath(path, _) ->
+    ExtString.String.join "::" path
 
 let rec string_of_bind (b : 'a bind) : string =
   match b with

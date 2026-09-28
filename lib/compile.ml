@@ -251,13 +251,14 @@ let desugar (p : sourcespan program) : sourcespan program =
 
 let rec resolve_typ_path (typ : 'a typ) =
   match typ with
-  | TyVar (name, t) -> 
+  | TyPath (path, t) -> 
     (
-      match name with
-      | "i32" -> TyCon(Int(I32), t)
-      | "bool" -> TyCon(Bool, t)
-      | _ -> failwith (sprintf "cannot resolve type %s" name)
+      match path with
+      | "i32" :: _ -> TyCon(Int(I32), t)
+      | "bool" :: _ -> TyCon(Bool, t)
+      | _ -> failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path))
     )
+  | TyVar (name, t) -> TyVar(name, t)
   | TyCon (name, t) -> TyCon(name, t)
   | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (resolve_typ_path arg)) args, (resolve_typ_path ret_type), t)
   | TyBlank(t) -> TyBlank(t)
@@ -308,6 +309,7 @@ let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 
   | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args, (subst_var_typ (tyvar, to_typ) ret_type), t)
   | TyBlank(t) -> TyBlank(t)
   | TyApp (ret_typ, args, t) -> TyApp((subst_var_typ (tyvar, to_typ) ret_typ), List.map (fun arg -> (subst_var_typ (tyvar, to_typ) arg)) args, t)
+  | _ -> failwith "should have been resolved by now"
 
 let rec subst_var_typ_in_scheme ((tyvar : string), (to_typ : 'a typ)) (scheme_args : string list) (in_typ : 'a typ) =
   match in_typ with
@@ -325,6 +327,7 @@ let rec subst_var_typ_in_scheme ((tyvar : string), (to_typ : 'a typ)) (scheme_ar
   | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type), t)
   | TyBlank(t) -> TyBlank(t)
   | TyApp (ret_typ, args, t) -> TyApp((subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_typ), List.map (fun arg -> (subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg)) args, t)
+  | _ -> failwith "should have been resolved by now"
 
 
 let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a scheme) : 'a scheme =
@@ -361,6 +364,7 @@ let rec ftv_typ (t : 'a typ) : StringSet.t =
                     args
                     (ftv_typ typ)
   | TyBlank _ -> StringSet.empty
+  | _ -> failwith "should have been resolved by now"
 ;;
 let ftv_scheme (s : 'a scheme) : StringSet.t =
   match s with

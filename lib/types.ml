@@ -15,6 +15,7 @@ type 'a typ =
   | TyArrow of 'a typ list * 'a typ * 'a
   | TyBlank of 'a
   | TyApp of 'a typ * 'a typ list * 'a
+  | TyPath of string list * 'a
 
 type 'a scheme =
   | SForall of string list * 'a typ * 'a
@@ -27,3 +28,4 @@ let rec untagTyp t =
   | TyArrow (args, ret_type, _) -> TyArrow(List.map untagTyp args, untagTyp ret_type, ())
   | TyBlank(_) -> TyBlank(())
   | TyApp (generic_type, generic_param_types, _) -> TyApp(untagTyp generic_type, List.map untagTyp generic_param_types, ())
+  | TyPath (path, _) -> TyPath(path, ())

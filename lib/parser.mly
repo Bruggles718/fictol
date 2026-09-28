@@ -182,7 +182,7 @@ params_opt:
 
 typ_opt:
   | /* empty */ { TyBlank(full_span()) }
-  | ARROW ID { TyVar($2, full_span()) }
+  | ARROW ID { TyPath([$2], full_span()) }
 
 binds :
   | bind { [$1] }
@@ -199,7 +199,7 @@ blankbind :
 
 namebind :
   | ID %prec SEMI { BName($1, false, TyBlank(full_span()), full_span()) }
-  | ID COLON ID %prec SEMI { BName($1, false, TyVar($3, full_span()), full_span()) }
+  | ID COLON ID %prec SEMI { BName($1, false, TyPath([$3], full_span()), full_span()) }
 
 decls :
   | decl { [$1] }
