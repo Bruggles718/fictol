@@ -399,17 +399,21 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst
     else
       [(tyvar, other)]
   in
+  let rec unify_lists (ts1: 'a typ list) (ts2: 'a typ list) : 'a typ subst =
+    match ts1, ts2 with
+    | first1 :: rest1, first2 :: rest2 ->
+      let sub = unify first1 first2 in
+      let rest1 = List.map (apply_subst_typ sub) rest1 in
+      let rest2 = List.map (apply_subst_typ sub) rest2 in
+      let new_sub = unify_lists rest1 rest2 in
+      compose_subst sub new_sub
+    | [], [] -> []
+    | _, _ -> failwith "unify_lists: mismatched list lengths"
+  in
   let unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty =
-    let unified_args = 
-        (try
-          List.combine t1_args t2_args
-        with
-        | exn -> failwith "Unification failure: different arities")
-        |> List.map (fun (t1_arg, t2_arg) -> unify t1_arg t2_arg)
-        |> List.concat
-      in
-      let unified_rets = unify t1_ret_ty t2_ret_ty in
-      unified_args @ unified_rets
+    let unified_args = unify_lists t1_args t2_args in
+    let unified_rets = unify t1_ret_ty t2_ret_ty in
+    unified_args @ unified_rets
   in
   match t1, t2 with
   | TyVar(name, _), other
@@ -444,12 +448,40 @@ let instantiate (s : 'a scheme) : 'a typ =
     let sub = List.map (fun s -> (s, (TyVar(gensym_typ "T", tag)))) args in
     apply_subst_typ sub typ
 
+let get_return_typ (typ : 'a typ) =
+  match typ with
+  | TyArrow(_, ret_typ, _) -> ret_typ
+  | _ -> failwith "Expected arrow type"
+
 
 let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
                   (e : sourcespan expr)
                   (* ... some bookkeeping ... *)
                   : ( sourcespan typ subst (* the resulting substitution *)
                     * sourcespan typ)      (* the resulting type *) =
+  let infer_app_typ (sch_subst: 'a subst) (sch_inst : sourcespan typ) (args : sourcespan expr list) (env) =
+    let (new_env, new_subst, typs) =
+          List.fold_left
+          (fun (acc_env, acc_subst, acc_typs) arg ->
+            let (arg_subst, arg_typ) = infer_exp acc_env arg in
+            let final_subst = compose_subst acc_subst arg_subst in
+            let new_env = apply_subst_schenv final_subst acc_env in
+            (new_env, final_subst, acc_typs @ [arg_typ]))
+          (env, sch_subst, []) args in
+        let arg_typs = 
+          List.map
+          (fun typ ->
+            apply_subst_typ new_subst typ)
+          typs
+        in
+        let ret_typ = TyVar(gensym_typ "appresult", dummy_span) in
+        let app_ty = TyArrow(arg_typs, ret_typ, dummy_span) in
+        let app_ty = apply_subst_typ new_subst app_ty in
+        let result_subst = unify sch_inst app_ty in
+        (* let app_ty = apply_subst_typ result_subst app_ty in *)
+        (* (result_subst, get_return_typ app_ty) *)
+        (result_subst, ret_typ)
+  in
   match e with
   | ELiteral(LitBool(_), _) -> ([], t_bool)
   | ELiteral (LitInt(n), loc) -> ([], t_i32)
@@ -457,36 +489,27 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
   | EPrim1 (op, e, _) -> 
       let sch = (
         match op with
-        | Print | PrintStack -> SForall(["X"], TyArrow([(TyVar("X", dummy_span))], (TyVar("X", dummy_span)), dummy_span), dummy_span)
+        | Print | PrintStack -> 
+          let new_typ = gensym_typ "prim1operand" in
+          SForall([new_typ], TyArrow([(TyVar(new_typ, dummy_span))], (TyVar(new_typ, dummy_span)), dummy_span), dummy_span)
         | Add1 | Sub1 | Neg -> SForall([], TyArrow([t_i32], t_i32, dummy_span), dummy_span)
         | Not -> SForall([], TyArrow([t_bool], t_bool, dummy_span), dummy_span)
       ) in
       let sch_inst = instantiate sch in
-      let (e_subst, e_typ) = infer_exp env e in
-      let subbed = apply_subst_typ e_subst e_typ in
-      let ret_typ = TyVar(gensym_typ "prim1result", dummy_span) in
-      let prim_ty = TyArrow([subbed], ret_typ, dummy_span) in
-      let result_subst = unify sch_inst prim_ty in
-      (result_subst, ret_typ)
+      infer_app_typ [] sch_inst [e] env
   | EPrim2 (op, l, r, _) ->
       let sch = (
         match op with
         | Plus | Minus | Times | Divide -> SForall([], TyArrow([t_i32; t_i32], t_i32, dummy_span), dummy_span)
         | Greater | GreaterEq | Less | LessEq -> SForall([], TyArrow([t_i32; t_i32], t_bool, dummy_span), dummy_span)
-        | Eq -> SForall(["X"], TyArrow([(TyVar("X", dummy_span)); (TyVar("X", dummy_span))], t_bool, dummy_span), dummy_span)
+        | Eq -> 
+          let new_ty = gensym_typ "eqoperand" in
+          SForall([new_ty], TyArrow([(TyVar(new_ty, dummy_span)); (TyVar(new_ty, dummy_span))], t_bool, dummy_span), dummy_span)
         | And | Or -> SForall([], TyArrow([t_bool; t_bool], t_bool, dummy_span), dummy_span)
         | _ -> failwith "unsupported"
       ) in
       let sch_inst = instantiate sch in
-      let (l_subst, l_typ) = infer_exp env l in
-      let l_subbed = apply_subst_typ l_subst l_typ in
-      let env = apply_subst_schenv l_subst env in
-      let (r_subst, r_typ) = infer_exp env r in
-      let r_subbed = apply_subst_typ r_subst r_typ in
-      let ret_typ = TyVar(gensym_typ "prim2result", dummy_span) in
-      let prim_ty = TyArrow([l_subbed; r_subbed], ret_typ, dummy_span) in
-      let result_subst = unify sch_inst prim_ty in
-      (result_subst, ret_typ)
+      infer_app_typ [] sch_inst [l; r] env
   | EIf(c, t, f, _) ->
     (* After each inference, update the type environment *)
     let (c_subst, c_typ) = infer_exp env c in
@@ -538,24 +561,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       fun_err @ wf_E_list args env *)
       let (clo_subst, clo_typ) = infer_exp env closure in
       let env = apply_subst_schenv clo_subst env in
-      let (new_env, new_subst, typs) =
-        List.fold_left
-        (fun (acc_env, acc_subst, acc_typs) arg ->
-          let (arg_subst, arg_typ) = infer_exp acc_env arg in
-          let final_subst = compose_subst acc_subst arg_subst in
-          let new_env = apply_subst_schenv final_subst acc_env in
-          (new_env, final_subst, acc_typs @ [arg_typ]))
-        (env, clo_subst, []) args in
-      let arg_typs = 
-        List.map
-        (fun typ ->
-          apply_subst_typ new_subst typ)
-        typs
-      in
-      let ret_typ = TyVar(gensym_typ "appresult", dummy_span) in
-      let app_ty = TyArrow(arg_typs, ret_typ, dummy_span) in
-      let result_subst = unify clo_typ app_ty in
-      (result_subst, ret_typ)
+      infer_app_typ clo_subst clo_typ args env
       (* [Unsupported ("Calling closures is not yet supported", loc)] *)
   (* | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env *)
   | _ -> failwith "bad"
@@ -584,6 +590,8 @@ let infer_decl env (decl: sourcespan decl) : (sourcespan typ subst * sourcespan 
             env args arg_typs in
           let (body_subst, body_typ) = infer_exp body_env body in
           let ret_typ = apply_subst_typ body_subst ret_typ in
+          (* (printf "body typ: %s\n" (string_of_typ body_typ));
+          (printf "ret typ: %s\n" (string_of_typ ret_typ)); *)
           let unified_subst = unify body_typ ret_typ in
           let final_subst = compose_subst body_subst unified_subst in
           let final_typ = apply_subst_typ final_subst fun_typ in
