@@ -17,6 +17,9 @@ type 'a typ =
   | TyApp of 'a typ * 'a typ list * 'a
   | TyPath of string list * 'a
 
+and 'a generic_bind =
+  | GBName of string * 'a
+
 type 'a scheme =
   | SForall of string list * 'a typ * 'a
 

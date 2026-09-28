@@ -66,7 +66,7 @@ and 'a expr =
   (* | EString of string * 'a *)
 
 type 'a decl =
-  | DFun of string * 'a bind list * 'a expr * call_type * 'a typ * 'a
+  | DFun of string * 'a generic_bind list * 'a bind list * 'a expr * call_type * 'a typ * 'a
 
 type 'a program = Program of 'a decl list * 'a
 

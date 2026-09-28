@@ -10,7 +10,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %token <string> STRING
 %token <Stdint.uint128 * string> INT
 %token <string> ID
-%token ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
+%token ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
 
 %right SEMI
 %left COLON COLONEQ
@@ -185,7 +185,11 @@ or_chain :
   | or_chain OR binop_operand { EPrim2(Or, $1, $3, full_span())}
 
 decl :
-  | extern_opt DEF ID LPARENNOSPACE params_opt RPAREN typ_opt COLON expr { DFun($3, $5, $9, $1, $7, full_span()) }
+  | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ret_typ_opt COLON expr { DFun($3, $4, $6, $10, $1, $8, full_span()) }
+
+generics_opt:
+  | /* empty */ { [] }
+  | LESSNOSPACE generics GREATER { $2 }
 
 extern_opt:
   | /* empty */       { FictolFunc }
@@ -195,9 +199,17 @@ params_opt:
   | /* empty */       { [] }
   | binds             { $1 }
 
-typ_opt:
+ret_typ_opt:
   | /* empty */ { TyBlank(full_span()) }
   | ARROW ID { TyPath([$2], full_span()) }
+
+generic :
+  | ID %prec SEMI { GBName($1, full_span()) }
+  | ID COLON ID %prec SEMI { GBName($1, full_span()) }
+
+generics :
+  | generic { [$1] }
+  | generic COMMA generics { $1::$3 }
 
 binds :
   | bind { [$1] }

@@ -108,7 +108,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env
   and wf_D d env (* other parameters may be needed here *) =
     match d with
-    | DFun (_, args, body, ct, typ, _) ->
+    | DFun (_, generics, args, body, ct, typ, _) ->
         let env2, _, args_err_lst =
           List.fold_left
             (fun (scope_env, shadow_env, args_err_lst) (x, loc) ->
@@ -134,7 +134,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       (List.mapi
          (fun i d ->
            match d with
-           | DFun (name, _, _, ct, typ, loc) -> (
+           | DFun (name, generics, _, _, ct, typ, loc) -> (
                let seq_env = full_env |> List.to_seq in
                let new_env =
                  Seq.append (Seq.take i seq_env) (Seq.drop (i + 1) seq_env) |> List.of_seq
@@ -149,7 +149,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
          decls )
   and get_new_env decls =
     match decls with
-    | DFun (name, _, _, ct, typ, loc) :: rest -> (name, loc) :: get_new_env rest
+    | DFun (name, generics, _, _, ct, typ, loc) :: rest -> (name, loc) :: get_new_env rest
     | [] -> []
   in
   match p with
@@ -204,8 +204,8 @@ let desugar (p : sourcespan program) : sourcespan program =
   and helpG g = List.map helpD g
   and helpD d =
     match d with
-    | DFun (name, args, body, call_type, typ, tag) ->
-      DFun (name, args, helpE body, call_type, typ, tag)
+    | DFun (name, generics, args, body, call_type, typ, tag) ->
+      DFun (name, generics, args, helpE body, call_type, typ, tag)
   and helpE e =
     match e with
     | ESeq (e1, e2, tag) -> ELet ([(BBlank tag, helpE e1, tag)], helpE e2, tag)
@@ -264,38 +264,50 @@ let desugar (p : sourcespan program) : sourcespan program =
     Program (helpG decls, tag)
 ;;
 
-let rec resolve_typ_path (typ : 'a typ) =
+let rec resolve_typ_path (env) (typ : 'a typ) =
   match typ with
   | TyPath (path, t) -> 
     (
       match path with
       | "i32" :: _ -> TyCon(Int(I32), t)
       | "bool" :: _ -> TyCon(Bool, t)
+      (* change to solve path eventually *)
+      (* | first :: rest -> 
+        if StringSet.mem first env then
+          TyVar(first, t)
+        else
+          failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path)) *)
       | _ -> failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path))
     )
   | TyVar (name, t) -> TyVar(name, t)
   | TyCon (name, t) -> TyCon(name, t)
-  | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (resolve_typ_path arg)) args, (resolve_typ_path ret_type), t)
+  | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (resolve_typ_path env arg)) args, (resolve_typ_path env ret_type), t)
   | TyBlank(t) -> TyBlank(t)
-  | TyApp (ret_typ, args, t) -> TyApp((resolve_typ_path ret_typ), List.map (fun arg -> (resolve_typ_path arg)) args, t)
+  | TyApp (ret_typ, args, t) -> TyApp((resolve_typ_path env ret_typ), List.map (fun arg -> (resolve_typ_path env arg)) args, t)
 
 let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   let rec helpP p =
     match p with
     | Program (decls, span) ->
       Program (List.map helpD decls, span)
+  and string_list_of_generics gs =
+    List.map 
+    (fun g ->
+      match g with
+      | GBName(name, tag) -> name)
+    gs
   and helpD decl =
     match decl with
-    | DFun(name, args, body, call_type, typ, span) ->
+    | DFun(name, generics, args, body, call_type, typ, span) ->
       let new_args =
         List.map
         (fun arg ->
           helpBind arg)
         args in
-      DFun(name, new_args, helpE body, call_type, resolve_typ_path typ, span)
+      DFun(name, generics, new_args, helpE body, call_type, resolve_typ_path StringSet.empty typ, span)
   and helpBind bind =
     match bind with
-    | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path typ, span)
+    | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path StringSet.empty typ, span)
     | BBlank _ -> bind
     (* | _ -> failwith "should've been desugared" *)
   and helpE expr =
@@ -575,7 +587,7 @@ let name_of_bind b =
 
 let infer_decl env (decl: sourcespan decl) : (sourcespan typ subst * sourcespan typ) =
   match decl with
-  | DFun (name, args, body, call_type, typ, tag) ->
+  | DFun (name, generics, args, body, call_type, typ, tag) ->
     let fun_typ = instantiate (StringMap.find name env) in
     (
       match fun_typ with
@@ -604,7 +616,7 @@ let infer_group env (group : sourcespan decl list) (* ... bookkeeping ...*)
     (fun decl ->
       (
         match decl with
-        | DFun(name, args, body, call_type, typ, tag) ->
+        | DFun(name, generics, args, body, call_type, typ, tag) ->
           let arg_tvs = 
             List.map 
             (fun arg ->

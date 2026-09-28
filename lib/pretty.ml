@@ -105,6 +105,11 @@ let rec string_of_bind (b : 'a bind) : string =
   (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
 ;;
 
+let rec string_of_generic_bind (b : 'a generic_bind) : string =
+  match b with
+  | GBName (name, tag) ->
+    name
+
 let string_of_call_type ct =
   match ct with
   | Extern(lang) -> sprintf "*'%s'" lang
@@ -177,8 +182,10 @@ let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "
 
 let rec string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
-  | DFun (name, args, body, call_type, typ, a) ->
-      sprintf "(def %s(%s)%s:\n  %s)%s" name
+  | DFun (name, generics, args, body, call_type, typ, a) ->
+      sprintf "(def %s%s(%s)%s:\n  %s)%s" name
+        (let gens = (ExtString.String.join ", " (List.map string_of_generic_bind generics)) in
+        if List.length generics > 0 then "<" ^ gens ^ ">" else gens)
         (ExtString.String.join ", " (List.map string_of_bind args))
         (let typ_str = (string_of_typ typ) in
         if (String.length typ_str) <= 0 then "" else " -> " ^ typ_str)

@@ -1,16 +1,8 @@
-# def test_add() -> bool:
-#    true == 1
+def test_parse(a: i32, b: i32) -> i32:
+    a + b
 
-def identity(x: i32) -> i32:
-    x
+def test_parse2<T, U>(a: i32, b: i32) -> i32:
+    a == b
 
 def main() -> i32:
-    let a: i32 = 7, b: i32 = 5 in
-    let test_bool: bool = true in
-    identity(a);
-    identity(b);
-    # identity(test_bool);
-    if a > b:
-        a
-    else:
-        b
+    0

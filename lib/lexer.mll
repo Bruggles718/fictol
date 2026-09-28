@@ -70,6 +70,7 @@ rule token = parse
   | "/" { DIVIDE }
   | ":=" { COLONEQ }
   | "==" { EQEQ }
+  | "<" { LESSNOSPACE }
   | ">" { GREATER }
   | "<=" { LESSEQ }
   | ">=" { GREATEREQ }
