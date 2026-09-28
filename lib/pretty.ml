@@ -71,9 +71,18 @@ let name_of_op2 op =
   | CheckSize -> "CheckSize"
 ;;
 
+let rec string_of_tykind (t : tykind) =
+  match t with
+  | Bool -> "bool"
+  | Int(w) ->
+    (match w with
+    | I32 -> "i32"
+    | _ -> failwith "not supported int width currently")
+
 let rec string_of_typ (t: 'a typ) : string =
   match t with
-  | TyVar(name, _) | TyCon(name, _) -> name
+  | TyVar(name, _) -> name
+  | TyCon(tykind, _) -> string_of_tykind tykind
   | TyArrow(ty_lst, ret_ty, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_typ ty_lst) ^ ") -> " ^ (string_of_typ ret_ty)
   | TyBlank _ -> ""
   | TyApp(generic_ty, generic_param_ty_lst, _) ->

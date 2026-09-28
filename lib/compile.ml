@@ -38,6 +38,8 @@ let rec find_tag ls (i : tag) =
 
 type scope_info = sourcespan * int option * int option
 
+let built_in_types = StringSet.of_list ["i32"; "bool"]
+
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   let rec string_list_from_bind bind =
     match bind with
@@ -56,6 +58,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           names
       in *)
       (* (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ dups @ body_err) *)
+      
       (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err)
     (* with Not_found -> (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err) *)
   and wf_E_list e_lst env =
@@ -145,6 +148,155 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | [] -> Ok p
       | _ -> Error err_lst )
 ;;
+
+let desugar (p : sourcespan program) : sourcespan program =
+  (* let gensym =
+    let next = ref 0 in
+    fun name ->
+      next := !next + 1;
+      sprintf "%s_?#%d" name !next
+  in *)
+  let rec helpBE bind =
+    let b, e, btag = bind in
+    let e = helpE e in
+    match b with
+    (* | BTuple (binds, ttag) -> (
+      match e with
+      | EId _ -> expandTuple binds ttag e
+      | _ ->
+          let newname = gensym "tup" in
+          (BName (newname, false, ttag), e, btag) :: expandTuple binds ttag (EId (newname, ttag)) ) *)
+    | _ -> [(b, e, btag)]
+  (* and expandTuple binds tag source : sourcespan binding list =
+    let tupleBind i b =
+      match b with
+      | BBlank _ -> []
+      | BName (_, _, btag) ->
+          [(b, EGetItem (source, ENumber (Int64.of_int i, dummy_span), tag), btag)]
+      | BTuple (binds, tag) ->
+          let newname = gensym "tup" in
+          let newexpr = EId (newname, tag) in
+          ( BName (newname, false, tag),
+            EGetItem (source, ENumber (Int64.of_int i, dummy_span), tag),
+            tag )
+          :: expandTuple binds tag newexpr
+    in
+    let size_check =
+      EPrim2 (CheckSize, source, ENumber (Int64.of_int (List.length binds), dummy_span), dummy_span)
+    in
+    let size_check_bind = (BBlank dummy_span, size_check, dummy_span) in
+    size_check_bind :: List.flatten (List.mapi tupleBind binds) *)
+  and helpG g = List.map helpD g
+  and helpD d =
+    match d with
+    | DFun (name, args, body, call_type, typ, tag) ->
+      DFun (name, args, helpE body, call_type, typ, tag)
+  and helpE e =
+    match e with
+    | ESeq (e1, e2, tag) -> ELet ([(BBlank tag, helpE e1, tag)], helpE e2, tag)
+    | EId (x, tag) -> EId (x, tag)
+    | ELiteral (n, tag) -> ELiteral (n, tag)
+    | EPrim1 (op, body, tag) -> (
+      match op with
+      | Not -> EIf (helpE body, ELiteral (LitBool(false), tag), ELiteral (LitBool(true), tag), tag)
+      | Add1 | Sub1 | Print | PrintStack ->
+          EPrim1 (op, helpE body, tag) )
+    | EPrim2 (op, left, right, tag) -> (
+      match op with
+      | And ->
+          EIf
+            ( helpE left,
+              helpE right,
+              ELiteral (LitBool(false), tag),
+              tag )
+      | Or ->
+          EIf
+            ( helpE left,
+              ELiteral (LitBool(true), tag),
+              helpE right,
+              tag )
+      | Plus | Minus | Times | Divide | Greater | GreaterEq | Less | LessEq | Eq | CheckSize ->
+          EPrim2 (op, helpE left, helpE right, tag) )
+    | ELet (binds, body, tag) ->
+        let newbinds = List.map helpBE binds in
+        List.fold_right (fun binds body -> ELet (binds, body, tag)) newbinds (helpE body)
+    (* | ELetRec (bindexps, body, tag) ->
+        (* ASSUMES well-formed letrec, so only BName bindings *)
+        let newbinds = List.map (fun (bind, e, tag) -> (bind, helpE e, tag)) bindexps in
+        ELetRec (newbinds, helpE body, tag) *)
+    | EIf (cond, thn, els, tag) -> EIf (helpE cond, helpE thn, helpE els, tag)
+    | EApp (name, args, native, tag) -> EApp (helpE name, List.map helpE args, native, tag)
+    (* | ELambda (binds, body, tag) ->
+        let expandBind bind =
+          match bind with
+          | BTuple (_, btag) ->
+              let newparam = gensym "tuparg" in
+              (BName (newparam, false, btag), helpBE (bind, EId (newparam, btag), btag))
+          | _ -> (bind, [])
+        in
+        let params, newbinds = List.split (List.map expandBind binds) in
+        let newbody =
+          List.fold_right (fun binds body -> ELet (binds, body, tag)) newbinds (helpE body)
+        in
+        ELambda (params, newbody, tag) *)
+    (* | EString (s, tag) ->
+        let num_list = List.map (fun c -> ENumber (Int64.of_int (Char.code c), tag)) (explode s) in
+        let nums_linked = List.fold_right (fun n l -> ETuple ([n; l], tag)) num_list (ENil tag) in
+        helpE (EApp (EId ("String", tag), [nums_linked], Snake, tag)) *)
+  in
+  match p with
+  | Program (decls, tag) ->
+    Program (helpG decls, tag)
+;;
+
+let rec resolve_typ_path (typ : 'a typ) =
+  match typ with
+  | TyVar (name, t) -> 
+    (
+      match name with
+      | "i32" -> TyCon(Int(I32), t)
+      | "bool" -> TyCon(Bool, t)
+      | _ -> failwith (sprintf "cannot resolve type %s" name)
+    )
+  | TyCon (name, t) -> TyCon(name, t)
+  | TyArrow (args, ret_type, t) -> TyArrow(List.map (fun arg -> (resolve_typ_path arg)) args, (resolve_typ_path ret_type), t)
+  | TyBlank(t) -> TyBlank(t)
+  | TyApp (ret_typ, args, t) -> TyApp((resolve_typ_path ret_typ), List.map (fun arg -> (resolve_typ_path arg)) args, t)
+
+let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallible =
+  let rec helpP p =
+    match p with
+    | Program (decls, span) ->
+      Program (List.map helpD decls, span)
+  and helpD decl =
+    match decl with
+    | DFun(name, args, body, call_type, typ, span) ->
+      let new_args =
+        List.map
+        (fun arg ->
+          helpBind arg)
+        args in
+      DFun(name, new_args, helpE body, call_type, resolve_typ_path typ, span)
+  and helpBind bind =
+    match bind with
+    | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path typ, span)
+    | BBlank _ -> bind
+    (* | _ -> failwith "should've been desugared" *)
+  and helpE expr =
+    match expr with
+    | ELet(bindings, body, span) ->
+      let new_bindings =
+        List.map
+        (fun (bind, bind_body, span) ->
+          (helpBind bind, helpE bind_body, span))
+        bindings in
+      ELet(new_bindings, helpE body, span)
+    | _ -> expr
+  in
+  try
+    Ok(helpP p)
+  with
+  | exn -> Error [exn]
 
 let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 'a typ =
   match in_typ with
@@ -258,10 +410,10 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 
-let t_i32 = TyCon("i32", dummy_span)
-let t_bool = TyCon("bool", dummy_span)
+let t_i32 = TyCon(Int(I32), dummy_span)
+let t_bool = TyCon(Bool, dummy_span)
 
-let gensym =
+let gensym_typ =
     let count = ref 0 in
     let next () =
       count := !count + 1;
@@ -271,7 +423,7 @@ let gensym =
 let instantiate (s : 'a scheme) : 'a typ =
   match s with
   | SForall(args, typ, tag) ->
-    let sub = List.map (fun s -> (s, (TyVar(gensym "T", tag)))) args in
+    let sub = List.map (fun s -> (s, (TyVar(gensym_typ "T", tag)))) args in
     apply_subst_typ sub typ
 
 
@@ -294,7 +446,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       let sch_inst = instantiate sch in
       let (e_subst, e_typ) = infer_exp env e in
       let subbed = apply_subst_typ e_subst e_typ in
-      let ret_typ = TyVar(gensym "prim1result", dummy_span) in
+      let ret_typ = TyVar(gensym_typ "prim1result", dummy_span) in
       let prim_ty = TyArrow([subbed], ret_typ, dummy_span) in
       let result_subst = unify sch_inst prim_ty in
       (result_subst, ret_typ)
@@ -313,7 +465,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       let env = apply_subst_schenv l_subst env in
       let (r_subst, r_typ) = infer_exp env r in
       let r_subbed = apply_subst_typ r_subst r_typ in
-      let ret_typ = TyVar(gensym "prim2result", dummy_span) in
+      let ret_typ = TyVar(gensym_typ "prim2result", dummy_span) in
       let prim_ty = TyArrow([l_subbed; r_subbed], ret_typ, dummy_span) in
       let result_subst = unify sch_inst prim_ty in
       (result_subst, ret_typ)
@@ -347,14 +499,12 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
             let new_env = apply_subst_schenv b_subst acc_env in
             let subst_so_far = compose_subst acc_subst b_subst in
             let b_typ = apply_subst_typ subst_so_far b_typ in
-            let (final_subst, new_env) = 
-              (match x with
+            (match x with
               | BName(name, _, typ, _) ->
                 let unified_subst = unify typ b_typ in
                 let final_subst = compose_subst subst_so_far unified_subst in
-                (final_subst, StringMap.add name (SForall([], b_typ, dummy_span)) new_env)
-              | _ -> failwith "blank name found?") in
-            (new_env, final_subst))
+                (StringMap.add name (SForall([], b_typ, dummy_span)) new_env, final_subst)
+              | _ -> (new_env, subst_so_far)))
           (env, []) binds
       in
       let (body_subst, body_typ) = infer_exp new_env body in
@@ -384,7 +534,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
           apply_subst_typ new_subst typ)
         typs
       in
-      let ret_typ = TyVar(gensym "appresult", dummy_span) in
+      let ret_typ = TyVar(gensym_typ "appresult", dummy_span) in
       let app_ty = TyArrow(arg_typs, ret_typ, dummy_span) in
       let result_subst = unify clo_typ app_ty in
       (result_subst, ret_typ)
@@ -431,8 +581,8 @@ let infer_group env (group : sourcespan decl list) (* ... bookkeeping ...*)
       (
         match decl with
         | DFun(name, args, body, call_type, typ, tag) ->
-          let arg_tvs = List.map (fun _ -> TyVar(gensym "T", dummy_span)) args in
-          let ret_tv = TyVar(gensym "T", dummy_span) in
+          let arg_tvs = List.map (fun _ -> TyVar(gensym_typ "T", dummy_span)) args in
+          let ret_tv = TyVar(gensym_typ "T", dummy_span) in
           (name, TyArrow(arg_tvs, ret_tv, dummy_span), dummy_span)
       ))
       group in
@@ -591,6 +741,8 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline
     =
   prog
   |> add_err_phase well_formed is_well_formed
+  |> add_phase desugared desugar
+  |> add_err_phase type_names_resolved resolve_prog_typ_paths
   |> add_err_phase type_checked type_synth
   |> add_phase result compile_prog
   (* prog *)

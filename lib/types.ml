@@ -11,7 +11,7 @@ type tykind =
 
 type 'a typ =
   | TyVar of string * 'a
-  | TyCon of string * 'a
+  | TyCon of tykind * 'a
   | TyArrow of 'a typ list * 'a typ * 'a
   | TyBlank of 'a
   | TyApp of 'a typ * 'a typ list * 'a

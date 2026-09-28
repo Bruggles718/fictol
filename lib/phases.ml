@@ -25,6 +25,7 @@ type phase =
   | TypeChecked of sourcespan program
   | Renamed of tag program
   | Desugared of sourcespan program
+  | TypeNamesResolved of sourcespan program
   (* | AddedNatives of sourcespan program *)
   (* | Tagged of tag program
   | ANFed of tag aprogram *)
@@ -41,6 +42,8 @@ let parsed p = Parsed p
 let well_formed p = WellFormed p
 
 let type_checked p = TypeChecked p
+
+let type_names_resolved p = TypeNamesResolved p
 
 let renamed p = Renamed p
 
