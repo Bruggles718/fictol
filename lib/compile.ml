@@ -217,8 +217,8 @@ let ftv_scheme (s : 'a scheme) : StringSet.t =
   match s with
   | SForall(args, typ, _) ->
      StringSet.diff (ftv_typ typ) (StringSet.of_list args)
-let ftv_env (e : 'a typ envt) : StringSet.t =
-  let mapped = StringMap.map (fun (typ) -> ftv_typ typ) e in
+let ftv_env (e : 'a scheme envt) : StringSet.t =
+  let mapped = StringMap.map (fun (sch) -> ftv_scheme sch) e in
   StringMap.fold (fun _ value acc -> StringSet.union acc value) mapped StringSet.empty
 
 let occurs (name : string) (t : 'a typ) =
@@ -246,7 +246,11 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst
   match t1, t2 with
   | TyVar(name, _), other
   | other, TyVar(name, _) -> unify_tyvar_other name other
-  | TyCon(name1, _), TyCon(name2, _) -> []
+  | TyCon(name1, _), TyCon(name2, _) -> 
+    if name1 = name2 then
+      []
+    else
+      failwith "Unification failure: inconsistent type constants"
   | TyArrow(t1_args, t1_ret_ty, t1_tag), TyArrow(t2_args, t2_ret_ty, t2_tag)
   | TyApp(t1_ret_ty, t1_args, t1_tag), TyApp(t2_ret_ty, t2_args, t2_tag) ->
     unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
@@ -257,24 +261,25 @@ let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 let t_i32 = TyCon("i32", dummy_span)
 let t_bool = TyCon("bool", dummy_span)
 
-let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
-                  (e : sourcespan expr)
-                  (* ... some bookkeeping ... *)
-                  : ( sourcespan typ subst (* the resulting substitution *)
-                    * sourcespan typ)      (* the resulting type *) =
-  let gensym =
+let gensym =
     let count = ref 0 in
     let next () =
       count := !count + 1;
       !count
     in fun str -> sprintf "%s_%d" str (next ())
-  in
-  let instantiate (s : 'a scheme) : 'a typ =
-    match s with
-    | SForall(args, typ, tag) ->
-      let sub = List.map (fun s -> (s, (TyVar(gensym "T", tag)))) args in
-      apply_subst_typ sub typ
-  in
+;;
+let instantiate (s : 'a scheme) : 'a typ =
+  match s with
+  | SForall(args, typ, tag) ->
+    let sub = List.map (fun s -> (s, (TyVar(gensym "T", tag)))) args in
+    apply_subst_typ sub typ
+
+
+let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
+                  (e : sourcespan expr)
+                  (* ... some bookkeeping ... *)
+                  : ( sourcespan typ subst (* the resulting substitution *)
+                    * sourcespan typ)      (* the resulting type *) =
   match e with
   | ELiteral(LitBool(_), _) -> ([], t_bool)
   | ELiteral (LitInt(n), loc) -> ([], t_i32)
@@ -292,7 +297,7 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       let ret_typ = TyVar(gensym "prim1result", dummy_span) in
       let prim_ty = TyArrow([subbed], ret_typ, dummy_span) in
       let result_subst = unify sch_inst prim_ty in
-      (result_subst, prim_ty)
+      (result_subst, ret_typ)
   | EPrim2 (op, l, r, _) ->
       let sch = (
         match op with
@@ -304,32 +309,167 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
       ) in
       let sch_inst = instantiate sch in
       let (l_subst, l_typ) = infer_exp env l in
-      let (r_subst, r_typ) = infer_exp env r in
       let l_subbed = apply_subst_typ l_subst l_typ in
+      let env = apply_subst_schenv l_subst env in
+      let (r_subst, r_typ) = infer_exp env r in
       let r_subbed = apply_subst_typ r_subst r_typ in
       let ret_typ = TyVar(gensym "prim2result", dummy_span) in
       let prim_ty = TyArrow([l_subbed; r_subbed], ret_typ, dummy_span) in
       let result_subst = unify sch_inst prim_ty in
-      (result_subst, prim_ty)
-  (* | EIf (c, t, f, _) -> wf_E_list [c; t; f] env
+      (result_subst, ret_typ)
+  | EIf(c, t, f, _) ->
+    (* After each inference, update the type environment *)
+    let (c_subst, c_typ) = infer_exp env c in
+    let env = apply_subst_schenv c_subst env in
+    let (t_subst, t_typ) = infer_exp env t in
+    let env = apply_subst_schenv t_subst env in
+    let (f_subst, f_typ) = infer_exp env f in
+    (* let env = apply_subst_schenv f_subst env in *)
+    (* Compose the substitutions together *)
+    let subst_so_far = compose_subst (compose_subst c_subst t_subst) f_subst in
+    (* rewrite the types *)
+    let c_typ = apply_subst_typ subst_so_far c_typ in
+    let t_typ = apply_subst_typ subst_so_far t_typ in
+    let f_typ = apply_subst_typ subst_so_far f_typ in
+    (* unify condition with Bool *)
+    let unif_subst1 = unify c_typ t_bool in
+    (* unify two branches *)
+    let unif_subst2 = unify t_typ f_typ in
+    (* compose all substitutions *)
+    let final_subst = compose_subst (compose_subst subst_so_far unif_subst1) unif_subst2 in
+    let final_typ = apply_subst_typ final_subst t_typ in
+    (final_subst, final_typ)
   | ELet (binds, body, _) ->
-      let env2, _, err_lst =
+      let (new_env, new_subst) =
         List.fold_left
-          (fun (scope_env, shadow_env, err_lst) (x, e, _) ->
-            binding_errs (scope_env, shadow_env, err_lst) x (wf_E e scope_env) )
-          (env, [], []) binds
+          (fun (acc_env, acc_subst) (x, e, _) ->
+            let (b_subst, b_typ) = infer_exp acc_env e in
+            let new_env = apply_subst_schenv b_subst acc_env in
+            let subst_so_far = compose_subst acc_subst b_subst in
+            let b_typ = apply_subst_typ subst_so_far b_typ in
+            let (final_subst, new_env) = 
+              (match x with
+              | BName(name, _, typ, _) ->
+                let unified_subst = unify typ b_typ in
+                let final_subst = compose_subst subst_so_far unified_subst in
+                (final_subst, StringMap.add name (SForall([], b_typ, dummy_span)) new_env)
+              | _ -> failwith "blank name found?") in
+            (new_env, final_subst))
+          (env, []) binds
       in
-      err_lst @ wf_E body env2
+      let (body_subst, body_typ) = infer_exp new_env body in
+      let final_subst = compose_subst new_subst body_subst in
+      let final_typ = apply_subst_typ final_subst body_typ in
+      (final_subst, final_typ)
   (* | EApp (_, args, Native, _) -> wf_E_list args env *)
-  | EApp (EId(name, id_loc), args, _, loc) ->
+  (* | EApp (EId(name, id_loc), args, _, loc) ->
       let fun_err = wf_E (EId(name, id_loc)) env in
-      fun_err @ wf_E_list args env
+      fun_err @ wf_E_list args env *)
   | EApp (closure, args, _, loc) ->
       (* let fun_err = wf_E closure env in
       fun_err @ wf_E_list args env *)
-      [Unsupported ("Calling closures is not yet supported", loc)]
-  | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env *)
+      let (clo_subst, clo_typ) = infer_exp env closure in
+      let env = apply_subst_schenv clo_subst env in
+      let (new_env, new_subst, typs) =
+        List.fold_left
+        (fun (acc_env, acc_subst, acc_typs) arg ->
+          let (arg_subst, arg_typ) = infer_exp acc_env arg in
+          let final_subst = compose_subst acc_subst arg_subst in
+          let new_env = apply_subst_schenv final_subst acc_env in
+          (new_env, final_subst, acc_typs @ [arg_typ]))
+        (env, clo_subst, []) args in
+      let arg_typs = 
+        List.map
+        (fun typ ->
+          apply_subst_typ new_subst typ)
+        typs
+      in
+      let ret_typ = TyVar(gensym "appresult", dummy_span) in
+      let app_ty = TyArrow(arg_typs, ret_typ, dummy_span) in
+      let result_subst = unify clo_typ app_ty in
+      (result_subst, ret_typ)
+      (* [Unsupported ("Calling closures is not yet supported", loc)] *)
+  (* | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env *)
+  | _ -> failwith "bad"
+
+let generalize (env : 'a scheme envt) (t : 'a typ) : 'a scheme =
+  let quantified = StringSet.diff (ftv_typ t) (ftv_env env) in
+  SForall(StringSet.elements quantified, t, dummy_span)
+
+let name_of_bind b =
+  match b with
+  | BName(x, _, _, _) -> x
+  | _ -> failwith "invalid bind form"
+
+let infer_decl env (decl: sourcespan decl) : (sourcespan typ subst * sourcespan typ) =
+  match decl with
+  | DFun (name, args, body, call_type, typ, tag) ->
+    let fun_typ = instantiate (StringMap.find name env) in
+    (
+      match fun_typ with
+      | TyArrow(arg_typs, ret_typ, _) ->
+          let body_env = 
+            List.fold_left2
+            (fun acc arg t ->
+              StringMap.add (name_of_bind arg)
+              (SForall([], t, dummy_span)) acc)
+            env args arg_typs in
+          let (body_subst, body_typ) = infer_exp body_env body in
+          let ret_typ = apply_subst_typ body_subst ret_typ in
+          let unified_subst = unify body_typ ret_typ in
+          let final_subst = compose_subst body_subst unified_subst in
+          let final_typ = apply_subst_typ final_subst fun_typ in
+          (final_subst, final_typ)
+      | _ -> failwith "expected arrow type for decl"
+    )
   
+let infer_group env (group : sourcespan decl list) (* ... bookkeeping ...*)
+    : sourcespan scheme envt =
+  let guesses =
+    List.map
+    (fun decl ->
+      (
+        match decl with
+        | DFun(name, args, body, call_type, typ, tag) ->
+          let arg_tvs = List.map (fun _ -> TyVar(gensym "T", dummy_span)) args in
+          let ret_tv = TyVar(gensym "T", dummy_span) in
+          (name, TyArrow(arg_tvs, ret_tv, dummy_span), dummy_span)
+      ))
+      group in
+  let mono_env =
+    List.fold_left
+    (fun acc (name, typ, _) -> StringMap.add name (SForall([], typ, dummy_span)) acc)
+    env guesses in
+  let (group_subst, _) =
+    List.fold_left
+    (fun (subst_so_far, env_so_far) decl ->
+      let (s, _) = infer_decl env_so_far decl in
+      let new_subst = compose_subst subst_so_far s in
+      let new_env = apply_subst_schenv s env_so_far in
+      (new_subst, new_env))
+    ([], mono_env) group in
+  let outer_env = apply_subst_schenv group_subst env in
+  List.fold_left
+  (fun acc (name, guess, _) ->
+    let final_typ = apply_subst_typ group_subst guess in
+    StringMap.add name (generalize outer_env final_typ) acc)
+  outer_env guesses
+
+let infer_prog (env : sourcespan scheme envt)
+  (p : sourcespan program) : sourcespan program =
+  match p with
+  | Program(decls, tag) ->
+    let _ = infer_group env decls in
+    p
+
+
+let type_synth (p : sourcespan program) : sourcespan program fallible =
+  try
+    Ok(infer_prog StringMap.empty p)
+  with e -> Error([e])
+;;
+    
+
 (* let rec type_check_prog (prog: sourcespan program) : sourcespan program fallible =
   match prog with
   | Program(decls, _) ->
@@ -451,7 +591,7 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline
     =
   prog
   |> add_err_phase well_formed is_well_formed
-  (* |> add_err_phase type_checked type_check_prog *)
+  |> add_err_phase type_checked type_synth
   |> add_phase result compile_prog
   (* prog *)
   (* |> add_err_phase well_formed is_well_formed
