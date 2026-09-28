@@ -76,7 +76,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   and wf_E e env =
     match e with
     | ELiteral(LitBool(_), _) -> []
-    | ELiteral (LitInt(n), loc) ->
+    | ELiteral (LitInt(n, _), loc) ->
         if (Int128.of_uint128 n) > (Int128.of_int32 Int32.max_int) || (Int128.of_uint128 n) < (Int128.of_int32 Int32.min_int) then
           [Overflow ((Int128.of_uint128 n), loc)]
         else
@@ -478,13 +478,11 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
         let app_ty = TyArrow(arg_typs, ret_typ, dummy_span) in
         let app_ty = apply_subst_typ new_subst app_ty in
         let result_subst = unify sch_inst app_ty in
-        (* let app_ty = apply_subst_typ result_subst app_ty in *)
-        (* (result_subst, get_return_typ app_ty) *)
         (result_subst, ret_typ)
   in
   match e with
   | ELiteral(LitBool(_), _) -> ([], t_bool)
-  | ELiteral (LitInt(n), loc) -> ([], t_i32)
+  | ELiteral (LitInt(n, _), loc) -> ([], t_i32)
   | EId (x, loc) -> ([], instantiate (StringMap.find x env))
   | EPrim1 (op, e, _) -> 
       let sch = (
@@ -650,113 +648,6 @@ let type_synth (p : sourcespan program) : sourcespan program fallible =
     Ok(infer_prog StringMap.empty p)
   with e -> Error([e])
 ;;
-    
-
-(* let rec type_check_prog (prog: sourcespan program) : sourcespan program fallible =
-  match prog with
-  | Program(decls, _) ->
-    let env = get_decls_type_env decls in
-    let errs = type_check_decl_list env decls in
-    match errs with
-    | [] -> Ok prog
-    | _ -> Error errs
-
-and type_check_decl_list env decls =
-  match decls with
-  | first :: rest -> (type_check_decl env first) @ (type_check_decl_list env rest)
-  | [] -> []
-
-and get_binds_type_env binds =
-  let filtered = 
-    List.filter 
-    (fun b -> 
-      match b with
-      | BName _ -> true
-      | BBlank _ -> false)
-    binds
-  in
-  List.map
-  (fun b -> 
-    match b with
-    | BName(name, _, typ, _) -> (name, typ)
-    | BBlank _ -> raise (InternalCompilerError ("Shouldn't be blank")))
-  filtered
-and type_check_decl env decl = 
-  match decl with
-  | DFun(name, binds, body, _, typ, _) -> 
-    let (errs, result_typ) = type_check_exp ((get_binds_type_env binds ) @ env) body typ in
-    errs
-and type_check_exp env exp typ = 
-  match exp, typ with
-  | _, TyBlank loc -> ([CannotInferType("cannot infer type!")], (TyBlank(loc)))
-  | ELiteral(LitInt(n), _), TyCon("i32", _) -> ([], typ)
-  | ELiteral(LitBool(b), _), TyCon("bool", _) -> ([], typ)
-  | EId(name, loc), expected_typ -> 
-    let id_typ = untagTyp (find env name) in
-    let expected_typ_untagged = untagTyp expected_typ in
-    if id_typ = expected_typ_untagged then
-      ([], typ)
-    else
-      ([InconsistentType(sprintf "inconsistent type at %s" (string_of_sourcespan loc))], typ)
-  | EPrim2(Plus, lhs, rhs, loc), TyCon("i32", _)
-  | EPrim2(Minus, lhs, rhs, loc), TyCon("i32", _)
-  | EPrim2(Times, lhs, rhs, loc), TyCon("i32", _)
-  | EPrim2(Divide, lhs, rhs, loc), TyCon("i32", _)
-  | EPrim2(And, lhs, rhs, loc), TyCon("bool", _)
-  | EPrim2(Or, lhs, rhs, loc), TyCon("bool", _) ->
-    let (errs_lhs, typ_lhs) = (type_check_exp env lhs typ) in
-    let (errs_rhs, typ_rhs) = (type_check_exp env rhs typ) in
-    (errs_lhs @ errs_rhs, typ)
-  | EPrim2(Greater, lhs, rhs, loc), TyCon("bool", ty_loc)
-  | EPrim2(GreaterEq, lhs, rhs, loc), TyCon("bool", ty_loc)
-  | EPrim2(Less, lhs, rhs, loc), TyCon("bool", ty_loc)
-  | EPrim2(LessEq, lhs, rhs, loc), TyCon("bool", ty_loc) ->
-    let (errs_lhs, typ_lhs) = (type_check_exp env lhs (TyCon("i32", loc))) in
-    let (errs_rhs, typ_rhs) = (type_check_exp env rhs (TyCon("i32", loc))) in
-    (errs_lhs @ errs_rhs, typ)
-  | ELet(bindings, body, loc), expected_typ ->
-      let bindings_errs = type_check_bindings env bindings in
-      let binds = List.map (fun (bind, _, _) -> bind) bindings in
-      let binds_type_env = get_binds_type_env binds in
-      let (errs_body, typ_body) = type_check_exp (binds_type_env @ env) body expected_typ in
-      (bindings_errs @ errs_body, typ_body)
-  | EApp(EId(name, id_loc), args, ct, loc), expected_typ ->
-    let func_typ = (find env name) in
-    let (errs_args, _) = (
-      match func_typ with
-      | TyArrow(arg_typs, ret_typ) -> 
-        (List.combine args arg_typs)
-        |> List.map (fun (arg, typ) ->
-          type_check_exp env arg typ)
-        |> List.split
-      | _ -> ([[InconsistentType(sprintf "cannot call non-arrow type at %s" (string_of_sourcespan id_loc))]], [])
-      ) in
-    (List.concat errs_args, expected_typ)
-  | EIf(cond, thn, els, loc), expected_typ ->
-    let (errs_cond, typ_cond) = (type_check_exp env cond typ) in
-    let (errs_thn, typ_thn) = (type_check_exp env thn typ) in
-    let (errs_els, typ_els) = (type_check_exp env els typ) in
-    (errs_cond @ errs_thn @ errs_els, typ)
-  | _, TyCon(_, loc) -> ([CannotInferType(sprintf "cannot infer type at %s" (string_of_sourcespan loc))], typ)
-  | _, _ -> ([CannotInferType("cannot infer type!")], typ)
-
-and type_check_bindings env bindings =
-  match bindings with
-  | (BName(name, _, typ, _), body, _) :: rest -> (fst (type_check_exp env body typ)) @ (type_check_bindings ((name, typ) :: env) rest)
-  | _ -> [] 
-and get_decls_type_env decls =
-  match decls with
-  | DFun (name, binds, _, _, typ, _) :: rest -> 
-      let bind_types = List.map get_bind_type binds in
-      [(name, TyArrow(bind_types, typ))] @ (get_decls_type_env rest)
-  | [] -> []
-
-and get_bind_type b =
-  match b with
-  | BBlank loc -> TyCon("Any", loc)
-  | BName (name, _, typ, _) -> typ *)
-
-
 
 let run_if should_run f =
   if should_run then

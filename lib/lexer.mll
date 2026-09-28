@@ -17,6 +17,7 @@ let ignore_new_line lexbuf =
 }
 
 let dec_digit = ['0'-'9']
+let int_suffix = "i8" | "i16" | "i32" | "i64" | "i128"
 (* let signed_int = dec_digit+ | ('-' dec_digit+) *)
 let unsigned_int = dec_digit+
 
@@ -38,7 +39,7 @@ rule token = parse
   | '\n' "<" { ignore_new_line lexbuf; LESSSPACE }
   | blank { token lexbuf }
   | '\n' { new_line lexbuf; token lexbuf }
-  | unsigned_int as x { INT (Stdint.Uint128.of_string x) }
+  | (unsigned_int as x) (int_suffix? as suff) { INT (Stdint.Uint128.of_string x, suff) }
   | ":=" { COLONEQ }
   | ":" { COLON }
   | "def" { DEF }

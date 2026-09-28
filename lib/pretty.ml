@@ -135,7 +135,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ENumber (n, a) -> Int64.to_string n ^ print_a a
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a *)
-    | ELiteral(LitInt(n), a) -> Uint128.to_string n ^ print_a a
+    | ELiteral(LitInt(n, suff), a) -> Uint128.to_string n ^ print_a a
     | ELiteral(LitBool(b), a) -> string_of_bool b ^ print_a a
     | EId (x, a) -> x ^ print_a a
     | EPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_expr e) (print_a a)

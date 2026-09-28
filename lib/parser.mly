@@ -1,5 +1,6 @@
 %{
 open Exprs
+open Types
 
 let full_span() = (Parsing.symbol_start_pos (), Parsing.symbol_end_pos ())
 let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos endtok)
@@ -7,7 +8,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %}
 
 %token <string> STRING
-%token <Stdint.uint128> INT
+%token <Stdint.uint128 * string> INT
 %token <string> ID
 %token ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
 
@@ -25,7 +26,19 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %%
 
 const :
-  | INT { ELiteral(LitInt($1), full_span()) }
+  | INT { 
+      let (num, text_suff) = $1 in
+      let suff = (
+        match text_suff with
+        | "i8" -> I8
+        | "i16" -> I16
+        | "i32" | "" -> I32
+        | "i64" -> I64
+        | "i128" -> I128
+        | _ -> failwith "Unexpected suffix"
+      ) in
+      ELiteral(LitInt(num, IntSuffix(suff)), full_span()) 
+    }
   | TRUE { ELiteral(LitBool(true), full_span()) }
   | FALSE { ELiteral(LitBool(false), full_span()) }
   // | STRING { EString($1, full_span()) }

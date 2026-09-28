@@ -40,8 +40,11 @@ and call_type =
   | FictolClosure
   | Unknown
 
+and int_suffix =
+  | IntSuffix of signed_int_width
+
 and lit = 
-  | LitInt of uint128
+  | LitInt of uint128 * int_suffix
   (* | Float of float * 'a *)
   | LitBool of bool
 
