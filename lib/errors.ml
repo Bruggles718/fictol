@@ -25,6 +25,8 @@ exception Unsupported of string * sourcespan
 
 exception InternalCompilerError of string (* Major failure: message to show *)
 
+exception NoTypeAnnotation of string * sourcespan
+
 exception CannotInferType of string
 
 exception InconsistentType of string
@@ -51,6 +53,7 @@ let known_compiletime_exn exn =
   | Unsupported _
   | CannotInferType _
   | InconsistentType _
+  | NoTypeAnnotation _
   | Arity _ -> true
   | _ -> false
 ;;
@@ -82,6 +85,7 @@ let print_error exn =
         (string_of_sourcespan loc) num_args num_types
   | CannotInferType (msg) -> "Cannot infer type: " ^ msg
   | InconsistentType (msg) -> "Inconsistent type: " ^ msg
+  | NoTypeAnnotation (x, loc) -> sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 

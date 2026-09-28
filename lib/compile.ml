@@ -61,6 +61,15 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       
       (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err)
     (* with Not_found -> (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err) *)
+  and blank_typ_in_bind_errs bind =
+    match bind with
+    | BName(name, _, typ, loc) ->
+      (
+        match typ with
+        | TyBlank _ -> [(NoTypeAnnotation(name, loc))]
+        | _ -> []
+      )
+    | _ -> [(NotYetImplemented ("unsupported binding type"))]
   and wf_E_list e_lst env =
     let results = List.map (fun e -> wf_E e env) e_lst in
     List.fold_left List.append [] results
@@ -111,7 +120,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             (env, [], [])
             (List.concat (List.map string_list_from_bind args))
         in
-        let err_lst = args_err_lst @ wf_E body env2 in
+        let typ_err_lst =
+          List.map
+          blank_typ_in_bind_errs
+          args
+          |> List.concat
+        in
+        let err_lst = args_err_lst @ typ_err_lst @ wf_E body env2 in
         err_lst
   and wf_D_list decls env =
     let full_env = get_new_env decls in
