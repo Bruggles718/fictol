@@ -1,9 +1,13 @@
-def greater_than(a: i32, b: i32) -> bool:
-    a > b
+def identity(x: i32) -> i32:
+    x
 
 def main() -> i32:
     let a: i32 = 7, b: i32 = 5 in
-    if greater_than(a, b):
+    let test_bool: bool = true in
+    identity(a);
+    identity(b);
+    # identity(test_bool);
+    if a > b:
         a
     else:
         b

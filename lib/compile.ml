@@ -263,7 +263,7 @@ let rec resolve_typ_path (typ : 'a typ) =
   | TyBlank(t) -> TyBlank(t)
   | TyApp (ret_typ, args, t) -> TyApp((resolve_typ_path ret_typ), List.map (fun arg -> (resolve_typ_path arg)) args, t)
 
-let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallible =
+let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   let rec helpP p =
     match p with
     | Program (decls, span) ->
@@ -293,10 +293,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
       ELet(new_bindings, helpE body, span)
     | _ -> expr
   in
-  try
-    Ok(helpP p)
-  with
-  | exn -> Error [exn]
+  helpP p
 
 let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 'a typ =
   match in_typ with
@@ -406,6 +403,8 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (* other bookkeeping *) : 'a typ subst
   | TyArrow(t1_args, t1_ret_ty, t1_tag), TyArrow(t2_args, t2_ret_ty, t2_tag)
   | TyApp(t1_ret_ty, t1_args, t1_tag), TyApp(t2_ret_ty, t2_args, t2_tag) ->
     unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
+  | TyBlank(span), other
+  | other, TyBlank(span) -> failwith (sprintf "Unification failure at %s" (string_of_sourcespan span))
   | _ -> failwith "Unification failure"
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
@@ -581,8 +580,14 @@ let infer_group env (group : sourcespan decl list) (* ... bookkeeping ...*)
       (
         match decl with
         | DFun(name, args, body, call_type, typ, tag) ->
-          let arg_tvs = List.map (fun _ -> TyVar(gensym_typ "T", dummy_span)) args in
-          let ret_tv = TyVar(gensym_typ "T", dummy_span) in
+          let arg_tvs = 
+            List.map 
+            (fun arg ->
+              match arg with
+              | BName (_, _, typ, _) -> typ
+              | _ -> failwith "Unsupported binding type") 
+            args in
+          let ret_tv = typ in
           (name, TyArrow(arg_tvs, ret_tv, dummy_span), dummy_span)
       ))
       group in
@@ -742,7 +747,7 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline
   prog
   |> add_err_phase well_formed is_well_formed
   |> add_phase desugared desugar
-  |> add_err_phase type_names_resolved resolve_prog_typ_paths
+  |> add_phase type_names_resolved resolve_prog_typ_paths
   |> add_err_phase type_checked type_synth
   |> add_phase result compile_prog
   (* prog *)
