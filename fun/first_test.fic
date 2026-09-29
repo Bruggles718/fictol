@@ -1,8 +1,13 @@
-def test_parse(a: i32, b: i32) -> i32:
-    a + b
+# def test_parse(a: i32, b: i32) -> i32:
+#     a + b
 
-def test_parse2<T, U>(a: i32, b: i32) -> i32:
-    a == b
+# def test_parse2<T, U>(a: T, b: U) -> i32:
+#     a == b
+
+def identity<T>(x: T) -> T:
+    x
 
 def main() -> i32:
-    0
+    identity(5);
+    identity(7);
+    identity(true)

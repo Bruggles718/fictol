@@ -269,14 +269,18 @@ let rec resolve_typ_path (env) (typ : 'a typ) =
   | TyPath (path, t) -> 
     (
       match path with
-      | "i32" :: _ -> TyCon(Int(I32), t)
-      | "bool" :: _ -> TyCon(Bool, t)
+      | ["i8"]   -> TyCon(Int I8,  t)
+      | ["i16"]  -> TyCon(Int I16, t)
+      | ["i32"]  -> TyCon(Int I32, t)
+      | ["i64"]  -> TyCon(Int I64, t)
+      | ["i128"] -> TyCon(Int I128, t)
+      | ["bool"] -> TyCon(Bool, t)
       (* change to solve path eventually *)
-      (* | first :: rest -> 
-        if StringSet.mem first env then
-          TyVar(first, t)
+      | [name] -> 
+        if List.mem name env then
+          TyVar(name, t)
         else
-          failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path)) *)
+          failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path))
       | _ -> failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path))
     )
   | TyVar (name, t) -> TyVar(name, t)
@@ -287,9 +291,9 @@ let rec resolve_typ_path (env) (typ : 'a typ) =
 
 let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   let rec helpP p =
-    match p with
+    (match p with
     | Program (decls, span) ->
-      Program (List.map helpD decls, span)
+      Program (List.map helpD decls, span))
   and string_list_of_generics gs =
     List.map 
     (fun g ->
@@ -299,15 +303,16 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   and helpD decl =
     match decl with
     | DFun(name, generics, args, body, call_type, typ, span) ->
+      let generic_env = (string_list_of_generics generics) in
       let new_args =
         List.map
         (fun arg ->
-          helpBind arg)
+          helpBind generic_env arg)
         args in
-      DFun(name, generics, new_args, helpE body, call_type, resolve_typ_path StringSet.empty typ, span)
-  and helpBind bind =
+      DFun(name, generics, new_args, helpE body, call_type, resolve_typ_path generic_env typ, span)
+  and helpBind env bind =
     match bind with
-    | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path StringSet.empty typ, span)
+    | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path env typ, span)
     | BBlank _ -> bind
     (* | _ -> failwith "should've been desugared" *)
   and helpE expr =
@@ -316,7 +321,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
       let new_bindings =
         List.map
         (fun (bind, bind_body, span) ->
-          (helpBind bind, helpE bind_body, span))
+          (helpBind [] bind, helpE bind_body, span))
         bindings in
       ELet(new_bindings, helpE body, span)
     | _ -> expr
@@ -494,7 +499,11 @@ let rec infer_exp (env : sourcespan scheme envt) (* environment for variables *)
   in
   match e with
   | ELiteral(LitBool(_), _) -> ([], t_bool)
-  | ELiteral (LitInt(n, _), loc) -> ([], t_i32)
+  | ELiteral (LitInt(n, suffix), loc) -> 
+      (
+        match suffix with
+        | IntSuffix(width) -> ([], (TyCon((Int(width)), dummy_span)))
+      )
   | EId (x, loc) -> ([], instantiate (StringMap.find x env))
   | EPrim1 (op, e, _) -> 
       let sch = (
@@ -630,7 +639,7 @@ let infer_group env (group : sourcespan decl list) (* ... bookkeeping ...*)
       group in
   let mono_env =
     List.fold_left
-    (fun acc (name, typ, _) -> StringMap.add name (SForall([], typ, dummy_span)) acc)
+    (fun acc (name, typ, _) -> StringMap.add name (SForall(StringSet.to_list (ftv_typ typ), typ, dummy_span)) acc)
     env guesses in
   let (group_subst, _) =
     List.fold_left
