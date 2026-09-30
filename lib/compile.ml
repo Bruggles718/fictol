@@ -634,6 +634,9 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr)
       infer_app_typ clo_subst clo_cs clo_typ args env loc
   | _ -> failwith "bad"
 
+let string_of_pred_list pred_list = 
+  (ExtString.String.join "\n" (List.map string_of_pred pred_list))
+
 let generalize (env : 'a scheme envt) (predicates : 'a predicate list) (t : 'a typ) : 'a scheme =
   let quantified = StringSet.diff (ftv_typ t) (ftv_env env) in
   let kept, discharge_now =
@@ -644,6 +647,8 @@ let generalize (env : 'a scheme envt) (predicates : 'a predicate list) (t : 'a t
         not (StringSet.is_empty (StringSet.inter ftv_pred quantified)))
       predicates
   in
+  (* printf "preds to keep:\n%s\n" (string_of_pred_list kept);
+  printf "preds to discharge:\n%s\n" (string_of_pred_list discharge_now); *)
   List.iter check_instance_exists discharge_now;
   SForall(StringSet.elements quantified, kept, t, dummy_span)
 
@@ -717,6 +722,7 @@ let infer_group env (group : sourcespan decl list) : sourcespan scheme envt =
     (fun acc (name, t, cs) ->
       let final_typ = apply_subst_typ group_subst t in
       let final_cs = apply_subst_predicates group_subst cs in
+      (* printf "for func %s:\n" name; *)
       StringMap.add name (generalize outer_env final_cs final_typ) acc)
     outer_env results
 
