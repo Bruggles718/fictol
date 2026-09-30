@@ -17,11 +17,13 @@ type 'a typ =
   | TyApp of 'a typ * 'a typ list * 'a
   | TyPath of string list * 'a
 
+type 'a constrnt = string * 'a typ
+
 and 'a generic_bind =
-  | GBName of string * 'a
+  | GBName of string * string list * 'a
 
 type 'a scheme =
-  | SForall of string list * 'a typ * 'a
+  | SForall of string list * 'a constrnt list * 'a typ * 'a
 
 type 'a subst = (string * 'a) list
 let rec untagTyp t =

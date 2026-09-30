@@ -107,8 +107,9 @@ let rec string_of_bind (b : 'a bind) : string =
 
 let rec string_of_generic_bind (b : 'a generic_bind) : string =
   match b with
-  | GBName (name, tag) ->
-    name
+  | GBName (name, bounds, tag) ->
+    let colon = if List.length bounds > 0 then ":" else "" in
+    name ^ colon ^ (ExtString.String.join "+" bounds)
 
 let string_of_call_type ct =
   match ct with

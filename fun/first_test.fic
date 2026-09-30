@@ -7,7 +7,11 @@
 def identity<T>(x: T) -> T:
     x
 
+def generic_add<T: Add>(a: T, b: T) -> T:
+    a + b
+
 def main() -> i32:
     identity(5);
     identity(7);
-    identity(true)
+    identity(true);
+    generic_add(5, 3)

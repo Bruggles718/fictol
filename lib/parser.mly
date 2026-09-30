@@ -204,8 +204,12 @@ ret_typ_opt:
   | ARROW ID { TyPath([$2], full_span()) }
 
 generic :
-  | ID %prec SEMI { GBName($1, full_span()) }
-  | ID COLON ID %prec SEMI { GBName($1, full_span()) }
+  | ID %prec SEMI { GBName($1, [], full_span()) }
+  | ID COLON generic_bounds %prec SEMI { GBName($1, $3, full_span()) }
+
+generic_bounds :
+  | ID { [$1] }
+  | ID PLUS generic_bounds { $1::$3 }
 
 generics :
   | generic { [$1] }
