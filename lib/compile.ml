@@ -545,7 +545,7 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr)
     let ret_typ = TyVar(gensym_typ "appresult", dummy_span) in
     let app_ty = apply_subst_typ new_subst (TyArrow(arg_typs, ret_typ, dummy_span)) in
     let result_subst = unify sch_inst app_ty span in
-    (printf "result subst:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) result_subst)));
+    (* (printf "result subst:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) result_subst))); *)
     let final_subst = compose_subst new_subst result_subst in
     let ret_typ = apply_subst_typ final_subst ret_typ in
     let all_predicates = apply_subst_predicates final_subst (sch_predicates @ arg_predicates) in
@@ -612,8 +612,8 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr)
             let subst_so_far = compose_subst acc_subst b_subst in
             let new_env = apply_subst_schenv subst_so_far acc_env in
             let b_typ = apply_subst_typ subst_so_far b_typ in
-            (printf "b_typ: %s\n" (string_of_typ b_typ));
-            (printf "subst so far:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) subst_so_far)));
+            (* (printf "b_typ: %s\n" (string_of_typ b_typ));
+            (printf "subst so far:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) subst_so_far))); *)
             (match x with
              | BName(name, _, typ, _) ->
                let unified_subst = unify typ b_typ span in
@@ -634,29 +634,13 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr)
       infer_app_typ clo_subst clo_cs clo_typ args env loc
   | _ -> failwith "bad"
 
-and try_solve_pred pred =
-  try
-    solve_pred_fail pred
-  with
-    | exn-> ()
-
-and solve_pred_fail pred =
-  List.iter 
-    (fun cty ->
-      match cty with
-      | TyVar(vname, _) -> failwith "don't solve yet"
-        
-      | concrete -> ())
-    pred.pred_args;
-    check_instance_exists pred
-
 let generalize (env : 'a scheme envt) (predicates : 'a predicate list) (t : 'a typ) : 'a scheme =
   let quantified = StringSet.diff (ftv_typ t) (ftv_env env) in
   let kept, discharge_now =
     List.partition
       (fun pred -> 
         let ftv_pred = (List.fold_left StringSet.union StringSet.empty (List.map ftv_typ pred.pred_args)) in
-        (printf "freevars in %s:\n%s\n" (string_of_typ t) (ExtString.String.join "\n" (List.map (sprintf "%s") (StringSet.elements ftv_pred))));
+        (* (printf "freevars in %s:\n%s\n" (string_of_typ t) (ExtString.String.join "\n" (List.map (sprintf "%s") (StringSet.elements ftv_pred)))); *)
         not (StringSet.is_empty (StringSet.inter ftv_pred quantified)))
       predicates
   in
@@ -667,6 +651,10 @@ let name_of_bind b =
   match b with
   | BName(x, _, _, _) -> x
   | _ -> failwith "invalid bind form"
+
+let predicates_of_generic_bind g =
+  match g with
+  | GBName (name, preds, tag) -> preds
 
 let infer_decl env (decl: sourcespan decl)
     : (sourcespan typ subst * sourcespan typ * sourcespan predicate list) =
@@ -696,8 +684,6 @@ let infer_decl env (decl: sourcespan decl)
         let final_subst = compose_subst body_subst unified_subst in
         let final_typ = apply_subst_typ final_subst fun_typ in
         let final_cs = apply_subst_predicates final_subst body_cs in
-        List.iter try_solve_pred final_cs;
-        (* List.iter check_instance_exists final_cs; *)
         (final_subst, final_typ, final_cs)
      | _ -> failwith "expected arrow type for decl")
 
@@ -745,7 +731,7 @@ let infer_prog (env : sourcespan scheme envt)
 let type_synth (p : sourcespan program) : sourcespan program fallible =
   Hashtbl.add classes "Add" { class_name = "Add"; class_params = [GBName("Self", [], dummy_span)]; class_superclasses = []; class_methods = ["add", [], TyArrow([TyVar("Self",dummy_span); TyVar("Self",dummy_span)], TyVar("Self",dummy_span), dummy_span)] };
   List.iter (fun w -> register_instance "Add" 
-  {instance_head = {pred_class = "Add"; pred_args = [(TyCon(Int w, dummy_span))]}})
+  {instance_head = {pred_class = "Add"; pred_args = [(TyCon(Int w, dummy_span))]}; instance_context = []})
     [I8; I16; I32; I64; I128];
   try
     Ok(infer_prog StringMap.empty p)

@@ -36,7 +36,7 @@ type 'a instance_info = {
   (* include instance_id? *)
 
   instance_head : 'a predicate;
-  (* instance_context: 'a predicate list; *)
+  instance_context: 'a predicate list;
   (* instance_methods: (string * 'a typ) list; *)
 }
 
