@@ -105,11 +105,14 @@ let rec string_of_bind (b : 'a bind) : string =
   (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
 ;;
 
+let string_of_pred pred =
+  "(" ^ (ExtString.String.join ", " (List.map string_of_typ pred.pred_args)) ^ ")"
+
 let rec string_of_generic_bind (b : 'a generic_bind) : string =
   match b with
   | GBName (name, bounds, tag) ->
     let colon = if List.length bounds > 0 then ":" else "" in
-    name ^ colon ^ (ExtString.String.join "+" bounds)
+    name ^ colon ^ (ExtString.String.join "+" (List.map string_of_pred bounds))
 
 let string_of_call_type ct =
   match ct with

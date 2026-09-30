@@ -201,15 +201,23 @@ params_opt:
 
 ret_typ_opt:
   | /* empty */ { TyBlank(full_span()) }
-  | ARROW ID { TyPath([$2], full_span()) }
+  | ARROW typ_name { $2 }
 
 generic :
   | ID %prec SEMI { GBName($1, [], full_span()) }
   | ID COLON generic_bounds %prec SEMI { GBName($1, $3, full_span()) }
 
+typ_name :
+  | ID { TyPath([$1], full_span()) }
+  | ID LESSNOSPACE typ_names GREATER { TyApp( (TyPath([$1], full_span())), $3, full_span() ) }
+
+typ_names:
+  | typ_name { [$1] }
+  | typ_name COMMA typ_names { $1::$3 }
+
 generic_bounds :
-  | ID { [$1] }
-  | ID PLUS generic_bounds { $1::$3 }
+  | ID LESSNOSPACE typ_names GREATER { [{ pred_class = $1; pred_args = $3 }] }
+  | generic_bounds PLUS generic_bounds { $1 @ $3 }
 
 generics :
   | generic { [$1] }
@@ -230,7 +238,7 @@ blankbind :
 
 namebind :
   | ID %prec SEMI { BName($1, false, TyBlank(full_span()), full_span()) }
-  | ID COLON ID %prec SEMI { BName($1, false, TyPath([$3], full_span()), full_span()) }
+  | ID COLON typ_name %prec SEMI { BName($1, false, $3, full_span()) }
 
 decls :
   | decl { [$1] }
