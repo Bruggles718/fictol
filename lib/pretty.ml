@@ -106,7 +106,7 @@ let rec string_of_bind (b : 'a bind) : string =
 ;;
 
 let string_of_pred pred =
-  "(" ^ (ExtString.String.join ", " (List.map string_of_typ pred.pred_args)) ^ ")"
+  pred.pred_class ^ "<" ^ (ExtString.String.join ", " (List.map string_of_typ pred.pred_args)) ^ ">"
 
 let rec string_of_generic_bind (b : 'a generic_bind) : string =
   match b with

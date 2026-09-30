@@ -300,6 +300,12 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
       match g with
       | GBName(name, _, tag) -> name)
     gs
+  and helpGeneric env g =
+    match g with
+    | GBName(name, predicates, tag) ->
+      GBName(name,
+        List.map (fun pred -> {pred_class = pred.pred_class; pred_args = (List.map (resolve_typ_path env) pred.pred_args)}) predicates,
+        tag)
   and helpD decl =
     match decl with
     | DFun(name, generics, args, body, call_type, typ, span) ->
@@ -309,7 +315,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
         (fun arg ->
           helpBind generic_env arg)
         args in
-      DFun(name, generics, new_args, helpE body, call_type, resolve_typ_path generic_env typ, span)
+      DFun(name, (List.map (helpGeneric generic_env) generics), new_args, helpE body, call_type, resolve_typ_path generic_env typ, span)
   and helpBind env bind =
     match bind with
     | BName(name, shadow, typ, span) -> BName(name, shadow, resolve_typ_path env typ, span)
@@ -488,7 +494,7 @@ let register_instance (cls : string) (inst : 'a instance_info) =
 let check_instance_exists (pred : 'a predicate) =
   match Hashtbl.find_opt instances pred.pred_class with
   | Some insts when List.exists (fun i -> i.instance_head = pred) insts -> ()
-  | _ -> failwith (Printf.sprintf "no instance of %s for %s" pred.pred_class (string_of_pred pred))
+  | _ -> failwith (Printf.sprintf "no instance of %s" (string_of_pred pred))
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 
@@ -544,7 +550,6 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr)
     let final_subst = compose_subst new_subst result_subst in
     let ret_typ = apply_subst_typ final_subst ret_typ in
     let all_predicates = apply_subst_predicates final_subst (sch_predicates @ arg_predicates) in
-    List.iter try_solve_pred all_predicates;
     (final_subst, ret_typ, all_predicates)
   in
   match e with
@@ -649,7 +654,9 @@ let generalize (env : 'a scheme envt) (predicates : 'a predicate list) (t : 'a t
   let kept, discharge_now =
     List.partition
       (fun pred -> 
-        not (StringSet.is_empty (StringSet.inter (List.fold_left StringSet.union StringSet.empty (List.map ftv_typ pred.pred_args)) quantified)))
+        let ftv_pred = (List.fold_left StringSet.union StringSet.empty (List.map ftv_typ pred.pred_args)) in
+        List.iter (printf "%s\n") (StringSet.elements ftv_pred);
+        not (StringSet.is_empty (StringSet.inter ftv_pred quantified)))
       predicates
   in
   List.iter check_instance_exists discharge_now;
@@ -701,11 +708,15 @@ let infer_group env (group : sourcespan decl list) : sourcespan scheme envt =
           let arg_tvs = List.map (fun arg -> match arg with
             | BName (_, _, typ, _) -> typ
             | _ -> failwith "Unsupported binding type") args in
-          (name, TyArrow(arg_tvs, typ, dummy_span), dummy_span))
+          (name, TyArrow(arg_tvs, typ, dummy_span), dummy_span,
+          List.concat (List.map 
+            (fun g ->
+              match g with
+              | GBName(_, predicates, _) -> predicates) generics)))
       group in
   let mono_env =
     List.fold_left
-      (fun acc (name, typ, _) -> StringMap.add name (SForall(StringSet.to_list (ftv_typ typ), [], typ, dummy_span)) acc)
+      (fun acc (name, typ, _, preds) -> StringMap.add name (SForall(StringSet.to_list (ftv_typ typ), preds, typ, dummy_span)) acc)
       env guesses in
   let (group_subst, results) =
     List.fold_left
