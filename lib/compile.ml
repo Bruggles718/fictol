@@ -743,9 +743,9 @@ let infer_prog (env : sourcespan scheme envt)
 
 
 let type_synth (p : sourcespan program) : sourcespan program fallible =
-  Hashtbl.add classes "Add" { class_name = "Add"; class_params = [GBName("Self", [], dummy_span)]; class_superclasses = []; class_methods = ["add", TyArrow([TyVar("Self",dummy_span); TyVar("Self",dummy_span)], TyVar("Self",dummy_span), dummy_span)] };
+  Hashtbl.add classes "Add" { class_name = "Add"; class_params = [GBName("Self", [], dummy_span)]; class_superclasses = []; class_methods = ["add", [], TyArrow([TyVar("Self",dummy_span); TyVar("Self",dummy_span)], TyVar("Self",dummy_span), dummy_span)] };
   List.iter (fun w -> register_instance "Add" 
-  {instance_head = {pred_class = "Add"; pred_args = [(TyCon(Int w, dummy_span))]}; instance_context = []})
+  {instance_head = {pred_class = "Add"; pred_args = [(TyCon(Int w, dummy_span))]}})
     [I8; I16; I32; I64; I128];
   try
     Ok(infer_prog StringMap.empty p)
