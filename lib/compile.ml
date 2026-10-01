@@ -1235,7 +1235,12 @@ let skolemize (s : 'a scheme) : 'a typ subst * 'a predicate list * 'a typ =
 
 let instance_method_scheme (inst : 'a instance_info) (cls : 'a class_info) (m : 'a method_info) :
     'a scheme =
-  failwith "TODO"
+  let cls = lookup_class inst.instance_head.pred_class in
+  SForall (
+    inst.instance_vars @ (List.map name_of_generic_bind m.m_generics),
+    inst.instance_context @ (List.concat (List.map predicates_of_generic_bind generics)),
+    apply_subst_typ (List.combine cls.class_params inst.instance_head.pred_args) m.m_typ
+  )
 ;;
 
 (* The expected scheme for method m as implemented in inst:
