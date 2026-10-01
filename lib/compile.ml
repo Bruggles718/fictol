@@ -1045,7 +1045,7 @@ let rec match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc
     let existing = List.filter (fun (tyvar, typ) -> tyvar = v) acc in (
     match existing with
     | [] -> Some ((v, target) :: acc)
-    | [(tyvar, typ)] ->
+    | (tyvar, typ) :: _ ->
       if (untagTyp target) = (untagTyp typ) then
         Some (acc)
       else
@@ -1053,11 +1053,14 @@ let rec match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc
   | TyVar(v), TyVar(t) when (not (StringSet.mem v pat_vars)) && (v = t) -> Some (acc)
   | TyCon(c), _ when (untagTyp target) = (untagTyp pat) -> Some (acc)
   | TyArrow(pat_args, pat_ret), TyArrow(target_args, target_ret)
-  | TyApp(pat_ret, pat_args), TyArrow(target_ret, target_args) ->
-    match (match_typ pat_vars pat_ret target_ret), ((List.length pat_args) = (List.length target_args)) with
-    | Some (sub), true -> 
+  | TyApp(pat_ret, pat_args), TyApp(target_ret, target_args) ->
+    let maybe_sub = (match_typ pat_vars pat_ret target_ret acc) in
+    let arity_match = ((List.length pat_args) = (List.length target_args)) in
+    (match maybe_sub with
+    | Some (sub) when arity_match -> 
       match_typ_list pat_vars pat_args target_args sub
-    | None, _ -> None
+    | _ -> None)
+  | _ -> None
 
 and match_typ_list (pat_vars: StringSet.t) (pat_lst : 'a typ list) (target_lst : 'a typ list) (acc : 'a typ subst) =
   List.fold_left 
@@ -1065,7 +1068,7 @@ and match_typ_list (pat_vars: StringSet.t) (pat_lst : 'a typ list) (target_lst :
     match acc_sub with
     | Some(acc_sub) -> match_typ pat_vars p t acc_sub
     | None -> None)
-  acc (List.combine pat_lst target_lst)
+  (Some(acc)) (List.combine pat_lst target_lst)
 
 (* ONE-WAY MATCHING, not unification: find a substitution for the variables in
    pat_vars that makes `pat` equal to `target`, extending `acc`.
@@ -1110,12 +1113,20 @@ let find_instance (p : sourcespan predicate) :
    predicate is stuck on unknowns or truly unsatisfiable; solve_wanted decides
    which (via has_meta_vars). Haskell calls this `byInst`. *)
 
-let given_closure (givens : 'a predicate list) : 'a predicate list = failwith "TODO"
+let given_closure (givens : 'a predicate list) : 'a predicate list =
+  List.map superclass_closure givens |> List.concat
 (* concat_map superclass_closure givens. With givens [Ord T] the closure is
    [Ord T; Eq T], so a wanted `Eq T` is solved without a separate Eq bound. *)
 
 let rec solve_wanted (givens : 'a predicate list) (w : sourcespan wanted) : sourcespan wanted list =
-  failwith "TODO"
+  match List.filter (fun pred -> pred_equal w.w_pred pred) (given_closure givens) with
+  | [] -> (
+    match find_instance w.w_pred with
+    | Some ((inst, sub)) -> (solve_wanteds givens (List.map (fun pred -> { w_pred = apply_subst_pred sub pred; w_span = w.w_span }) inst.instance_context))
+    | None ->
+      if has_meta_vars w.w_pred then [w] else failwith "Solve wanted failure: no instance"
+  )
+  | _ :: _ -> []
 (* Try to discharge ONE wanted. Returns the residual wanteds that remain stuck;
    [] means fully solved. Raises NoInstance when definitely unsatisfiable.
    Precondition: the caller already applied the final substitution to w.
@@ -1133,12 +1144,18 @@ let rec solve_wanted (givens : 'a predicate list) (w : sourcespan wanted) : sour
 
 and solve_wanteds (givens : 'a predicate list) (ws : sourcespan wanted list) :
     sourcespan wanted list =
-  failwith "TODO"
+  List.concat (List.map (solve_wanted givens) ws)
 ;;
 
 (* concat_map (solve_wanted givens) ws. *)
 
-let entails (givens : sourcespan predicate list) (p : sourcespan predicate) : bool = failwith "TODO"
+let entails (givens : sourcespan predicate list) (p : sourcespan predicate) : bool =
+  try
+    match solve_wanted givens {w_pred = p; w_span = dummy_span} with
+    | [] -> true
+    | _ -> false
+  with
+  | _ -> false
 (* Boolean wrapper: true iff solve_wanted givens {p; dummy_span} returns []
    without raising (catch NoInstance, treat any residual as false). Use for the
    superclass-obligation check, where there is no meaningful span or error. *)
