@@ -497,6 +497,11 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
             bindings
         in
         ELet (new_bindings, helpE body, span)
+    | EIf (cond, thn, els, span) -> EIf (helpE cond, helpE thn, helpE els, span)
+    | EApp (closure, args, call_type, span) -> EApp (helpE closure, List.map helpE args, call_type, span)
+    | ESeq (e1, e2, span) -> ESeq (helpE e1, helpE e2, span)
+    | EPrim1 (op, body, span) -> EPrim1 (op, helpE body, span)
+    | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE l, helpE r, span)
     | _ -> expr
   in
   helpP p
@@ -819,12 +824,26 @@ let register_class (d : sourcespan decl) : unit =
    (rebuilt as a DFun with call_type FictolFunc) in default_method_table under
    (class, method). Does NOT validate anything that refers to other classes,
    because a superclass may be declared later in the file. *)
+  let method_sig_to_dfun ms =
+    match ms.ms_default with
+    | Some (ms_default) -> 
+      DFun(ms.ms_name, ms.ms_generics, ms.ms_args, ms_default, FictolFunc, ms.ms_ret, ms.ms_span)
+    | None -> failwith (sprintf "Cannot convert method %s without a body" ms.ms_name)
+  in
   match d with
   | DClass (name, params, superclasses, methods, span) ->
       if Hashtbl.mem class_table name then
         failwith (sprintf "Duplicate class at <%s>" (string_of_sourcespan span))
       else
-        Hashtbl.add class_table name (class_info_of_decl d)
+        let cls_info = (class_info_of_decl d) in
+        Hashtbl.add class_table name cls_info;
+        List.iter
+        (fun method_sig ->
+          match method_sig.ms_default with
+          | Some _ -> Hashtbl.add default_method_table (name, method_sig.ms_name) (method_sig_to_dfun method_sig)
+          | None -> ())
+        methods;
+        Hashtbl.add instance_table name []
   | _ -> failwith "Cannot register non class"
 ;;
 
@@ -935,7 +954,7 @@ let instance_info_of_decl (d : sourcespan decl) : sourcespan instance_info =
         instance_span= span;
         instance_head= head;
         instance_id=
-          head.pred_class ^ "_" ^ ExtString.String.join "" (List.map show_typ head.pred_args) }
+          head.pred_class ^ "##" ^ ExtString.String.join "#" (List.map show_typ head.pred_args) }
   | _ -> failwith "Cannot get instance info of non instance decl"
 ;;
 
@@ -952,7 +971,7 @@ let overlaps (i1 : 'a instance_info) (i2 : 'a instance_info) : bool =
   unifiable i1_subbed_head i2_subbed_head
 ;;
 
-let register_instance (inst : sourcespan instance_info) : unit = failwith "TODO"
+let register_instance (inst : sourcespan instance_info) : unit =
 (* Validate then insert into instance_table. Checks:
    - the class exists and List.length head args = List.length class_params;
    - no existing instance of the class `overlaps` this one (OverlappingInstance);
@@ -961,6 +980,64 @@ let register_instance (inst : sourcespan instance_info) : unit = failwith "TODO"
      every class method without a default is present (MissingMethod).
    Does NOT check method bodies or superclass obligations; those need ALL
    instances registered first (see check_instance). *)
+  let class_exists (inst) : sourcespan class_info =
+    let cls_name = inst.instance_head.pred_class in
+    match Hashtbl.find_opt class_table cls_name with
+    | Some (cls) -> 
+      if (List.length inst.instance_head.pred_args) = (List.length cls.class_params) then 
+        cls
+      else
+        failwith ("Class param arity mismatch")
+    | None -> failwith (sprintf "No class %s found" cls_name)
+  in
+  let no_overlap (cls_name) (inst) : unit =
+    let existing = Hashtbl.find instance_table cls_name in
+    List.iter
+    (fun inst_item ->
+      if overlaps inst inst_item then
+        failwith (sprintf "Overlapping instances %s and %s" inst.instance_id inst_item.instance_id))
+    existing
+  in
+  let context_and_params_check (inst) : unit =
+    let context_vars = 
+      List.fold_left
+      (fun acc pred ->
+        StringSet.union acc (ftv_pred pred))
+      StringSet.empty inst.instance_context
+    in
+    let head_vars = (ftv_pred inst.instance_head) in
+    if StringSet.is_empty (StringSet.diff context_vars head_vars) then
+      ()
+    else
+      failwith (sprintf "Mismatched variable usage in instance context and instance head for %s" inst.instance_id)
+  in
+  let class_info_required_method_names (cls) : StringSet.t =
+    List.filter (fun method_info -> method_info.m_has_default) cls.class_methods
+    |>
+    List.map
+    (fun method_info ->
+      method_info.m_name)
+    |> StringSet.of_list
+  in
+  let methods_belong (cls) (inst) : unit =
+    let required_methods = class_info_required_method_names cls in
+    let implemented_methods = StringSet.of_list inst.instance_methods in
+    if StringSet.is_empty (StringSet.diff required_methods implemented_methods) then
+      ()
+    else
+      failwith (sprintf "%s does not implement the required methods" inst.instance_id)
+  in
+  let validate_instance (inst : sourcespan instance_info) : unit =
+    let cls = class_exists inst in
+    no_overlap cls.class_name inst;
+    context_and_params_check inst;
+    methods_belong cls inst;
+    let existing = Hashtbl.find instance_table cls.class_name in
+    Hashtbl.replace instance_table cls.class_name (inst :: existing)
+  in
+  validate_instance inst
+;;
+
 
 let match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc : 'a typ subst) :
     'a typ subst option =
@@ -1272,7 +1349,7 @@ let infer_group env (group : sourcespan decl list) : sourcespan scheme envt =
   let mono_env =
     List.fold_left
       (fun acc (name, typ, preds) ->
-        StringMap.add name (SForall (StringSet.to_list (ftv_typ typ), preds, typ)) acc )
+        StringMap.add name (SForall (StringSet.elements (ftv_typ typ), preds, typ)) acc )
       env guesses
   in
   let group_subst, results =
