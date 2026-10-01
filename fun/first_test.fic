@@ -24,5 +24,5 @@ def main() -> i32:
     identity(5);
     identity(7);
     identity(true);
-    let x: bool = identity(true) in
+    let x = identity(true) in
     x; 0

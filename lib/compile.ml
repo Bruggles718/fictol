@@ -1351,6 +1351,7 @@ let rec infer_exp (env : sourcespan scheme envt) (e : sourcespan expr) :
             (printf "subst so far:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) subst_so_far))); *)
             match x with
             | BName (name, _, typ, _) ->
+                let typ = match typ with | TyBlank _ -> (TyVar (gensym_typ name)) | _ -> typ in
                 let unified_subst = unify typ b_typ span in
                 let final_subst = compose_subst subst_so_far unified_subst in
                 (StringMap.add name (SForall ([], [], b_typ)) new_env, final_subst, acc_cs @ b_cs)
