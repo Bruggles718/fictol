@@ -1523,16 +1523,12 @@ let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
    every expr constructor. This is the one traversal everything else is built
    from. *)
 
-let apply_subst_expr (s : 'a typ subst) (e : 'a expr) : 'a expr = failwith "TODO"
+let apply_subst_expr (s : 'a typ subst) (e : 'a expr) : 'a expr =
+  map_types_in_expr (apply_subst_typ s) e
 (* map_types_in_expr (apply_subst_typ s). Used (a) to apply the final inference
    substitution to the ETyApp nodes (resolving the placeholders inserted
    during inference), and (b) by monomorphize to plug concrete types in for
    generic variables. *)
-
-let unskolemize_typ (t : 'a typ) : 'a typ = failwith "TODO"
-(* Replace every TyCon(Skolem n) with TyVar n. After a body is checked,
-   elaborated ETyApp nodes mention skolems; they must go back to TyVar so that
-   monomorphize can substitute concrete types for the generic names. *)
 
 let infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     sourcespan typ subst * sourcespan typ * sourcespan wanted list * sourcespan expr =
