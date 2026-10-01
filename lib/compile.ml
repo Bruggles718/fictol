@@ -1497,7 +1497,27 @@ let infer_prog (env : sourcespan scheme envt) (p : sourcespan program) : sources
    ones, and rename.
    ===================================================================== *)
 
-let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr = failwith "TODO"
+let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
+  let map_types_in_bind f b =
+    match b with
+    | BName (name, shadow, typ, tag) -> BName(name, shadow, (f typ), tag)
+    | _ -> failwith "Unsupported binding type"
+  in
+  match e with
+  | ESeq (e1, e2, tag) -> ESeq (map_types_in_expr f e1, map_types_in_expr f e2, tag)
+  | ELet (bindings, body, tag) ->
+    let new_bindings = List.map (fun (bind, bound_body, tag) ->
+      ((map_types_in_bind f bind), (map_types_in_expr f bound_body), tag))
+    bindings in
+    ELet (new_bindings, map_types_in_expr f body, tag)
+  | EPrim1 (op, body, tag) -> EPrim1 (op, map_types_in_expr f body, tag)
+  | EPrim2 (op, l, r, tag) -> EPrim2 (op, map_types_in_expr f l, map_types_in_expr f r, tag)
+  | EIf (cond, thn, els, tag) -> EIf (map_types_in_expr f cond, map_types_in_expr f thn, map_types_in_expr f els, tag)
+  | EApp (closure, args, call_type, tag) ->
+    EApp (map_types_in_expr f closure, List.map (map_types_in_expr f) args, call_type, tag)
+  | ETyApp (body, tys, tag) ->
+    ETyApp (map_types_in_expr f body, List.map f tys, tag)
+  | _ -> e
 (* Rebuild e applying f to every typ it contains: the annotations in BName
    binds inside ELet and the type-argument lists in ETyApp. Recurse through
    every expr constructor. This is the one traversal everything else is built
