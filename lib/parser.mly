@@ -209,7 +209,7 @@ generic :
 
 typ_name :
   | ID { TyPath([$1], full_span()) }
-  | ID LESSNOSPACE typ_names GREATER { TyApp( (TyPath([$1], full_span())), $3, full_span() ) }
+  | ID LESSNOSPACE typ_names GREATER { TyApp( (TyPath([$1], full_span())), $3) }
 
 typ_names:
   | typ_name { [$1] }

@@ -16,12 +16,10 @@ let no_imports = ref false
 
 let () =
   let speclist =
-    [ 
-      (* ("-t", Arg.Set show_trace, "Display the trace of compilation");
+    [ (* ("-t", Arg.Set show_trace, "Display the trace of compilation");
       ("-no-builtins", Arg.Set no_builtins, "Leave out all built-in functions");
       ("-no-imports", Arg.Set no_imports, "Leave out all built-in functions");
-      ("-d", Arg.Set show_debug_print, "Enable debug printing") *)
-       ]
+      ("-d", Arg.Set show_debug_print, "Enable debug printing") *) ]
   in
   Arg.parse speclist
     (fun name ->

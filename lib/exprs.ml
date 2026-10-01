@@ -30,7 +30,7 @@ type prim2 =
 and 'a bind =
   | BBlank of 'a
   | BName of string * bool * 'a typ * 'a
-  (* | BTuple of 'a bind list * 'a *)
+(* | BTuple of 'a bind list * 'a *)
 
 and 'a binding = 'a bind * 'a expr * 'a
 
@@ -40,10 +40,9 @@ and call_type =
   | FictolClosure
   | Unknown
 
-and int_suffix =
-  | IntSuffix of signed_int_width
+and int_suffix = IntSuffix of signed_int_width
 
-and lit = 
+and lit =
   | LitInt of uint128 * int_suffix
   (* | Float of float * 'a *)
   | LitBool of bool
@@ -64,11 +63,27 @@ and 'a expr =
   (* | ELambda of 'a bind list * 'a expr * 'a *)
   (* | ELetRec of 'a binding list * 'a expr * 'a *)
   (* | EString of string * 'a *)
+  | ETyApp of 'a expr * 'a typ list * 'a
+
+and 'a method_sig =
+  { ms_name: string;
+    ms_generics: 'a generic_bind list;
+    ms_args: 'a bind list;
+    ms_ret: 'a typ;
+    ms_default: 'a expr option; (* Some body when the class gives a default *)
+    ms_span: 'a }
 
 type 'a decl =
   | DFun of string * 'a generic_bind list * 'a bind list * 'a expr * call_type * 'a typ * 'a
+  | DClass of string * string list * 'a predicate list * 'a method_sig list * 'a
+  | DInstance of 'a generic_bind list * 'a predicate * 'a decl list * 'a
 
 type 'a program = Program of 'a decl list * 'a
+
+type method_impl =
+  | ImplDecl of sourcespan decl (* checked + elaborated user-written DFun *)
+  | ImplPrim1 of prim1 (* built-in instance: emit this primitive *)
+  | ImplPrim2 of prim2
 
 (* type 'a immexpr =
   (* immediate expressions *)

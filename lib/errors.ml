@@ -43,18 +43,18 @@ exception
 let known_compiletime_exn exn =
   match exn with
   | ParseError _
-  | NotYetImplemented _
-  | InternalCompilerError _
-  | Overflow _
-  | UnboundId _
-  | UnboundFun _
-  | DuplicateId _
-  | DuplicateFun _
-  | Unsupported _
-  | CannotInferType _
-  | InconsistentType _
-  | NoTypeAnnotation _
-  | Arity _ -> true
+   |NotYetImplemented _
+   |InternalCompilerError _
+   |Overflow _
+   |UnboundId _
+   |UnboundFun _
+   |DuplicateId _
+   |DuplicateFun _
+   |Unsupported _
+   |CannotInferType _
+   |InconsistentType _
+   |NoTypeAnnotation _
+   |Arity _ -> true
   | _ -> false
 ;;
 
@@ -75,17 +75,18 @@ let print_error exn =
       sprintf "The function name %s, redefined at <%s>, duplicates one at <%s>" x
         (string_of_sourcespan loc) (string_of_sourcespan existing)
   | Overflow (num, loc) ->
-      sprintf "The number literal %s, used at <%s>, is not supported in this language" (Int128.to_string num)
-        (string_of_sourcespan loc)
+      sprintf "The number literal %s, used at <%s>, is not supported in this language"
+        (Int128.to_string num) (string_of_sourcespan loc)
   | Arity (expected, actual, loc) ->
       sprintf "The function called at <%s> expected an arity of %d, but received %d arguments"
         (string_of_sourcespan loc) expected actual
   | DeclArity (name, num_args, num_types, loc) ->
       sprintf "The function %s, defined at %s, has %d arguments but only %d types provided" name
         (string_of_sourcespan loc) num_args num_types
-  | CannotInferType (msg) -> "Cannot infer type: " ^ msg
-  | InconsistentType (msg) -> "Inconsistent type: " ^ msg
-  | NoTypeAnnotation (x, loc) -> sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
+  | CannotInferType msg -> "Cannot infer type: " ^ msg
+  | InconsistentType msg -> "Inconsistent type: " ^ msg
+  | NoTypeAnnotation (x, loc) ->
+      sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 

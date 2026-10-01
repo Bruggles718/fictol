@@ -14,8 +14,8 @@
 def identity<T>(x: T) -> T:
     x
 
-def generic_add<T: Add<T> >(a: T, b: T) -> T:
-    a + b
+# def generic_add<T: Add<T> >(a: T, b: T) -> T:
+#     a + b
 
 def gen_eq<T>(a: T, b: T) -> bool:
     a == b
@@ -25,4 +25,4 @@ def main() -> i32:
     identity(7);
     identity(true);
     let x: bool = identity(true) in
-    generic_add(5, 7)
+    x; 0
