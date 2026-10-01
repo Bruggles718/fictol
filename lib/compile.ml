@@ -828,7 +828,7 @@ let register_class (d : sourcespan decl) : unit =
   | _ -> failwith "Cannot register non class"
 ;;
 
-let validate_classes () : unit =
+let validate_classes () : unit = failwith "TODO"
   (* Phase 2 of 2. After ALL classes are registered, check for every class:
    - each superclass names a registered class, with matching arity, and its
      args only mention this class's params;
@@ -838,7 +838,7 @@ let validate_classes () : unit =
    - every method type mentions every class param (otherwise a call can never
      determine which instance to use, which is an ambiguous method);
    - method generics don't shadow class params. *)
-  let superclass_of_arity_registered pred =
+  (* let superclass_of_arity_registered pred =
     try
       let reg_class = lookup_class pred.pred_class in
       if List.length reg_class.class_params = List.length pred.pred_args then
@@ -862,7 +862,7 @@ let validate_classes () : unit =
     List.iter superclass_of_arity_registered cls.class_superclasses
   in
   let _, all_classes = List.split (List.of_seq (Hashtbl.to_seq class_table)) in
-  List.iter validate_class all_classes
+  List.iter validate_class all_classes *)
 ;;
 
 let find_method (name : string) : (sourcespan class_info * sourcespan method_info) option =
