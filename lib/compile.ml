@@ -1182,11 +1182,12 @@ let skolemize_pred pred =
 let check_superclass_obligations (inst : sourcespan instance_info) : unit =
   let cls = lookup_class inst.instance_head.pred_class in
   let superclasses = cls.class_superclasses in
-  let subst = List.combine cls.class_params (List.map skolemize_typ inst.instance_head.pred_args) in
+  let subst = List.combine cls.class_params inst.instance_head.pred_args in
   List.iter
   (fun superclass ->
     let s = apply_subst_pred subst superclass in
-    let res = entails (List.map skolemize_pred inst.instance_context) (skolemize_pred s) in
+    let instance_vars_sub = List.map (fun v -> TyCon (Skolem (v))) inst.instance_vars in
+    let res = entails (List.map (apply_subst_pred instance_vars_sub) inst.instance_context) (apply_subst_pred instance_vars_sub s) in
     if res then () else failwith "Check superclass obligations failure: no instance")
   superclasses
 (* For `impl Ord for X`, the instance `Eq X` must exist (Haskell's superclass
@@ -1495,7 +1496,7 @@ let infer_prog (env : sourcespan scheme envt) (p : sourcespan program) : sources
    ones, and rename.
    ===================================================================== *)
 
-let map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr = failwith "TODO"
+let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr = failwith "TODO"
 (* Rebuild e applying f to every typ it contains: the annotations in BName
    binds inside ELet and the type-argument lists in ETyApp. Recurse through
    every expr constructor. This is the one traversal everything else is built
