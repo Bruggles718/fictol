@@ -1160,7 +1160,35 @@ let entails (givens : sourcespan predicate list) (p : sourcespan predicate) : bo
    without raising (catch NoInstance, treat any residual as false). Use for the
    superclass-obligation check, where there is no meaningful span or error. *)
 
-let check_superclass_obligations (inst : sourcespan instance_info) : unit = failwith "TODO"
+let rec skolemize_typ typ =
+  match typ with
+  | TyVar name -> (TyCon (Skolem (name)))
+  | TyArrow (args, ret_type) -> TyArrow (List.map skolemize_typ args, skolemize_typ ret_type)
+  | TyApp (generic_type, generic_param_types) ->
+      TyApp (skolemize_typ generic_type, List.map skolemize_typ generic_param_types)
+  | _ -> typ
+
+let rec unskolemize_typ typ =
+  match typ with
+  | TyCon (Skolem (name)) -> TyVar name
+  | TyArrow (args, ret_type) -> TyArrow (List.map unskolemize_typ args, unskolemize_typ ret_type)
+  | TyApp (generic_type, generic_param_types) ->
+      TyApp (unskolemize_typ generic_type, List.map unskolemize_typ generic_param_types)
+  | _ -> typ
+
+let skolemize_pred pred =
+  { pred_class = pred.pred_class; pred_args = List.map skolemize_typ pred.pred_args}
+
+let check_superclass_obligations (inst : sourcespan instance_info) : unit =
+  let cls = lookup_class inst.instance_head.pred_class in
+  let superclasses = cls.class_superclasses in
+  let subst = List.combine cls.class_params (List.map skolemize_typ inst.instance_head.pred_args) in
+  List.iter
+  (fun superclass ->
+    let s = apply_subst_pred subst superclass in
+    let res = entails (List.map skolemize_pred inst.instance_context) (skolemize_pred s) in
+    if res then () else failwith "Check superclass obligations failure: no instance")
+  superclasses
 (* For `impl Ord for X`, the instance `Eq X` must exist (Haskell's superclass
    rule). For each superclass S of the class (over class_params), substitute
    class_params |-> inst.instance_head.pred_args and require
@@ -1169,7 +1197,22 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit = fail
    variables are rigid, not unknowns. Raise NoInstance otherwise. Call this
    after ALL instances are registered. *)
 
-let scheme_of_decl (d : 'a decl) : 'a scheme = failwith "TODO"
+let scheme_of_decl (d : 'a decl) : 'a scheme =
+  match d with
+  | DFun (name, generics, args, _, _, ret_typ, _) ->
+    let arg_tvs =
+              List.map
+                (fun arg ->
+                  match arg with
+                  | BName (_, _, typ, _) -> typ
+                  | _ -> failwith "Unsupported binding type" )
+                args
+            in
+    SForall(
+      (List.map name_of_generic_bind generics),
+      (List.concat (List.map predicates_of_generic_bind generics)),
+      (TyArrow (arg_tvs, ret_typ))
+    )
 (* DFun(name, generics, args, _, _, ret, _) ->
      SForall( names of generics,
               concat of the bounds in generics,
@@ -1179,7 +1222,11 @@ let scheme_of_decl (d : 'a decl) : 'a scheme = failwith "TODO"
    re-derived the quantified variables from ftv_typ; here they are exactly the
    declared generics. *)
 
-let skolemize (s : 'a scheme) : 'a typ subst * 'a predicate list * 'a typ = failwith "TODO"
+let skolemize (s : 'a scheme) : 'a typ subst * 'a predicate list * 'a typ =
+  match s with
+  | SForall (args, predicates, typ) ->
+      let sub = List.map (fun v -> (v, TyCon (Skolem v))) args in
+      (sub, apply_subst_predicates sub predicates, apply_subst_typ sub typ)
 (* Like instantiate_for_decl, but each quantified variable v is replaced by
    the rigid TyCon(Skolem v) instead of a fresh unification variable.
    Returns (v |-> skolem substitution, GIVENS = the scheme's predicates with
