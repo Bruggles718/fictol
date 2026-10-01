@@ -631,8 +631,9 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
     (* FIXME (existing bug): a failed occurs check returns [] i.e. SUCCESS. It should raise
        (but still allow TyVar a ~ TyVar a). *)
     if occurs tyvar other then
-      failwith
-        (sprintf "Unification failure: occurs check failed at <%s>" (string_of_sourcespan span))
+      match other with
+      | TyVar(other_name) -> []
+      | _ -> failwith (sprintf "Unification failure: occurs check failed at <%s>" (string_of_sourcespan span))
     else
       [(tyvar, other)]
   in
@@ -1707,7 +1708,23 @@ let monomorphize (p : sourcespan program) : sourcespan program = failwith "TODO"
       calling f<List<T>>) never terminates; once you have parameterised types,
       add a depth limit. *)
 
-let type_synth_tc (p : sourcespan program) : sourcespan program fallible = failwith "TODO"
+let type_synth_tc (p : sourcespan program) : sourcespan program fallible =
+  try
+    match p with
+    | Program (decls, tag) ->
+      reset_class_state();
+      register_builtins();
+      let (classes, instances, funs) = partition_decls decls in
+      List.iter register_class classes;
+      validate_classes();
+      List.iter (fun d -> register_instance (instance_info_of_decl d)) instances;
+      let env = method_env () in
+      let new_p = infer_prog_elab env p in
+      Ok new_p
+  with
+    e -> Error [e]
+    
+
 (* The order is essential:
      reset_class_state ();
      register_builtins ();
