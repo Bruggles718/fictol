@@ -1186,7 +1186,7 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
   List.iter
   (fun superclass ->
     let s = apply_subst_pred subst superclass in
-    let instance_vars_sub = List.map (fun v -> TyCon (Skolem (v))) inst.instance_vars in
+    let instance_vars_sub = List.map (fun v -> (v, TyCon (Skolem (v)))) inst.instance_vars in
     let res = entails (List.map (apply_subst_pred instance_vars_sub) inst.instance_context) (apply_subst_pred instance_vars_sub s) in
     if res then () else failwith "Check superclass obligations failure: no instance")
   superclasses
@@ -1214,6 +1214,7 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
       (List.concat (List.map predicates_of_generic_bind generics)),
       (TyArrow (arg_tvs, ret_typ))
     )
+  | _ -> failwith "Cannot get scheme of non DFun"
 (* DFun(name, generics, args, _, _, ret, _) ->
      SForall( names of generics,
               concat of the bounds in generics,
@@ -1239,7 +1240,7 @@ let instance_method_scheme (inst : 'a instance_info) (cls : 'a class_info) (m : 
   let cls = lookup_class inst.instance_head.pred_class in
   SForall (
     inst.instance_vars @ (List.map name_of_generic_bind m.m_generics),
-    inst.instance_context @ (List.concat (List.map predicates_of_generic_bind generics)),
+    inst.instance_context @ (List.concat (List.map predicates_of_generic_bind m.m_generics)),
     apply_subst_typ (List.combine cls.class_params inst.instance_head.pred_args) m.m_typ
   )
 ;;
