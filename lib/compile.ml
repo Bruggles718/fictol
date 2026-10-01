@@ -1038,11 +1038,34 @@ let register_instance (inst : sourcespan instance_info) : unit =
   validate_instance inst
 ;;
 
-
-let match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc : 'a typ subst) :
+let rec match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc : 'a typ subst) :
     'a typ subst option =
-  failwith "TODO"
-;;
+  match pat, target with
+  | TyVar(v), _ when StringSet.mem v pat_vars -> 
+    let existing = List.filter (fun (tyvar, typ) -> tyvar = v) acc in (
+    match existing with
+    | [] -> Some ((v, target) :: acc)
+    | [(tyvar, typ)] ->
+      if (untagTyp target) = (untagTyp typ) then
+        Some (acc)
+      else
+        None)
+  | TyVar(v), TyVar(t) when (not (StringSet.mem v pat_vars)) && (v = t) -> Some (acc)
+  | TyCon(c), _ when (untagTyp target) = (untagTyp pat) -> Some (acc)
+  | TyArrow(pat_args, pat_ret), TyArrow(target_args, target_ret)
+  | TyApp(pat_ret, pat_args), TyArrow(target_ret, target_args) ->
+    match (match_typ pat_vars pat_ret target_ret), ((List.length pat_args) = (List.length target_args)) with
+    | Some (sub), true -> 
+      match_typ_list pat_vars pat_args target_args sub
+    | None, _ -> None
+
+and match_typ_list (pat_vars: StringSet.t) (pat_lst : 'a typ list) (target_lst : 'a typ list) (acc : 'a typ subst) =
+  List.fold_left 
+  (fun acc_sub (p, t) -> 
+    match acc_sub with
+    | Some(acc_sub) -> match_typ pat_vars p t acc_sub
+    | None -> None)
+  acc (List.combine pat_lst target_lst)
 
 (* ONE-WAY MATCHING, not unification: find a substitution for the variables in
    pat_vars that makes `pat` equal to `target`, extending `acc`.
@@ -1056,7 +1079,10 @@ let match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc : '
 
 let match_pred (pat_vars : StringSet.t) (pat : 'a predicate) (target : 'a predicate) :
     'a typ subst option =
-  failwith "TODO"
+  if pat.pred_class = target.pred_class then
+    match_typ_list pat_vars pat.pred_args target.pred_args []
+  else
+    None
 ;;
 
 (* Same class name, same arity, then fold match_typ over the argument pairs,
@@ -1064,7 +1090,17 @@ let match_pred (pat_vars : StringSet.t) (pat : 'a predicate) (target : 'a predic
 
 let find_instance (p : sourcespan predicate) :
     (sourcespan instance_info * sourcespan typ subst) option =
-  failwith "TODO"
+  let all_instances = Hashtbl.find instance_table p.pred_class in
+  let rec helper instances =
+    match instances with
+    | [] -> None
+    | first :: rest -> (
+      match match_pred (StringSet.of_list first.instance_vars) first.instance_head p with
+      | Some (sub) -> Some ((first, sub))
+      | None -> helper rest
+    )
+  in
+  helper all_instances
 ;;
 
 (* Look up instance_table[p.pred_class]; return the first instance whose
