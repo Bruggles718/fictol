@@ -487,8 +487,6 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
     | BBlank _ -> bind
   (* | _ -> failwith "should've been desugared" *)
   and helpE expr =
-    (* FIXME (existing bug): only ELet is traversed, so type paths inside EIf / EApp /
-       EPrim* / ESeq are never resolved, and let annotations get an empty generic env. *)
     match expr with
     | ELet (bindings, body, span) ->
         let new_bindings =
@@ -629,11 +627,9 @@ let occurs (name : string) (t : 'a typ) = StringSet.mem name (ftv_typ t)
 
 let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
   let unify_tyvar_other tyvar other =
-    (* FIXME (existing bug): a failed occurs check returns [] i.e. SUCCESS. It should raise
-       (but still allow TyVar a ~ TyVar a). *)
     if occurs tyvar other then
       match other with
-      | TyVar other_name -> []
+      | TyVar other_name when other_name = tyvar -> []
       | _ ->
           failwith
             (sprintf "Unification failure: occurs check failed at <%s>" (string_of_sourcespan span))
@@ -1101,7 +1097,7 @@ let register_instance (inst : sourcespan instance_info) : unit =
            inst.instance_id )
   in
   let class_info_required_method_names cls : StringSet.t =
-    List.filter (fun method_info -> method_info.m_has_default) cls.class_methods
+    List.filter (fun method_info -> not method_info.m_has_default) cls.class_methods
     |> List.map (fun method_info -> method_info.m_name)
     |> StringSet.of_list
   in
@@ -1986,7 +1982,9 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : so
           env funs
       in
       let new_funs = List.map (fun decl -> check_decl new_env (scheme_of_decl decl) decl) funs in
-      Program (classes @ instances @ new_funs, loc)
+      let new_instances = List.map (fun inst -> check_instance new_env inst) instances in
+      let new_classes = List.map (fun cls -> check_class_defaults new_env cls) classes in
+      Program (new_classes @ new_instances @ new_funs, loc)
 ;;
 
 (* REPLACES infer_prog and infer_group; it now returns the ELABORATED program
@@ -2223,7 +2221,10 @@ let rec monomorphize_expr (st : mono_state) (e : sourcespan expr) : sourcespan e
       | None ->
           (* f_name is a regular function *)
           let new_name = mangle_name f_name tys in
-          Queue.add (f_name, tys) st.worklist;
+          if not (Hashtbl.mem st.requested new_name) then
+            Queue.add (f_name, tys) st.worklist
+          else
+            ();
           EApp (EId (new_name, id_loc), args, call_type, loc) )
   | ELet (bindings, body, loc) ->
       let new_bindings =
