@@ -2274,14 +2274,14 @@ let monomorphize (p : typed_tag program) : typed_tag program =
       let _, _, funs = partition_decls decls in
       (* Only generic functions need to be kept around as templates.  The
          non-generic functions are the roots of the monomorphisation graph. *)
-      let _ =
+      (* let _ =
         List.filter
           (fun d ->
             match d with
             | DFun (_, generics, _, _, _, _, _) -> generics <> []
             | _ -> false )
           funs
-      in
+      in *)
       let nongeneric_funs =
         List.filter
           (fun d ->
@@ -2354,7 +2354,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
           | DFun (name, generics, args, body, call_type, ret_typ, loc) ->
               let body' = monomorphize_expr st body in
               st.emitted <-
-                st.emitted @ [DFun (name, generics, args, body', call_type, ret_typ, loc)]
+                (DFun (name, generics, args, body', call_type, ret_typ, loc)) :: st.emitted
           | _ -> failwith "Monomorphize failure: specialization was not a DFun"
         end
       done;
