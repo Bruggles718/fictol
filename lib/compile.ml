@@ -852,42 +852,111 @@ let register_class (d : sourcespan decl) : unit =
   | _ -> failwith "Cannot register non class"
 ;;
 
-let validate_classes () : unit = failwith "TODO"
-  (* Phase 2 of 2. After ALL classes are registered, check for every class:
-   - each superclass names a registered class, with matching arity, and its
-     args only mention this class's params;
-   - the superclass graph is acyclic (DFS; raise CyclicSuperclass);
-   - method names are unique across ALL classes and don't collide with
-     top-level function names (methods are global functions);
-   - every method type mentions every class param (otherwise a call can never
-     determine which instance to use, which is an ambiguous method);
-   - method generics don't shadow class params. *)
-  (* let superclass_of_arity_registered pred =
-    try
-      let reg_class = lookup_class pred.pred_class in
-      if List.length reg_class.class_params = List.length pred.pred_args then
-        ()
-      else
-        failwith "superclass arity mismatch"
-    with _ -> failwith (sprintf "Unregistered superclass %s" pred.pred_class)
+let validate_classes () : unit =
+  (* Sorted by source position so errors are reported deterministically
+     (Hashtbl iteration order is arbitrary). *)
+  let all_classes =
+    Hashtbl.to_seq_values class_table
+    |> List.of_seq
+    |> List.sort (fun a b -> compare a.class_span b.class_span)
   in
-  let rec search visited cls =
-    if StringSet.mem cls.class_name visited then
-      failwith ("Cyclic super class " ^ cls.class_name)
-    else
-      let superclass_class_infos =
-        List.map (fun pred -> lookup_class pred.pred_class) cls.class_superclasses
-      in
-      let new_env = StringSet.add cls.class_name visited in
-      List.iter (search new_env) superclass_class_infos
+  (* A predicate used as a superclass or as a method bound must name a
+     registered class and give it the right number of arguments. Looks in
+     class_table directly so it doesn't depend on lookup_class. *)
+  let check_pred_registered (cls : sourcespan class_info) (p : sourcespan predicate) : unit =
+    match Hashtbl.find_opt class_table p.pred_class with
+    | None -> failwith (sprintf "Validate classes failure: unknown class %s at <%s>" p.pred_class (string_of_sourcespan cls.class_span))
+    | Some target ->
+        let expected = List.length target.class_params in
+        let actual = List.length p.pred_args in
+        if expected <> actual then
+          failwith
+            (sprintf "class %s takes %d argument(s) but is given %d in `%s` (in class %s)"
+               p.pred_class expected actual (string_of_pred p) cls.class_name)
   in
-  let validate_class (cls : 'a class_info) =
-    search StringSet.empty cls;
-    List.iter superclass_of_arity_registered cls.class_superclasses
+  (* Superclass arguments may only mention this class's own parameters. *)
+  let check_superclass_vars (cls : sourcespan class_info) : unit =
+    let params = StringSet.of_list cls.class_params in
+    List.iter
+      (fun p ->
+        let stray = StringSet.diff (ftv_pred p) params in
+        if not (StringSet.is_empty stray) then
+          failwith
+            (sprintf "superclass `%s` of class %s mentions %s, which is not a parameter of the class"
+               (string_of_pred p) cls.class_name
+               (String.concat ", " (StringSet.elements stray))) )
+      cls.class_superclasses
   in
-  let _, all_classes = List.split (List.of_seq (Hashtbl.to_seq class_table)) in
-  List.iter validate_class all_classes *)
-;;
+  (* Cycle detection. `path` is the chain of classes currently being explored,
+     so reaching one again is a cycle (a diamond A<B,C<D is NOT one).
+     `finished` memoises classes already proven acyclic, which avoids
+     re-walking shared ancestors. Run only after check_pred_registered has
+     passed for every class, so every superclass is in class_table. *)
+  let finished : (string, unit) Hashtbl.t = Hashtbl.create 16 in
+  let rec search (path : StringSet.t) (cls : sourcespan class_info) : unit =
+    if StringSet.mem cls.class_name path then
+      failwith (sprintf "Validate classes failure: cyclic superclass %s at <%s>" cls.class_name (string_of_sourcespan cls.class_span))
+    else if not (Hashtbl.mem finished cls.class_name) then begin
+      let path' = StringSet.add cls.class_name path in
+      List.iter
+        (fun (p : sourcespan predicate) ->
+          match Hashtbl.find_opt class_table p.pred_class with
+          | Some super -> search path' super
+          | None -> () )
+        cls.class_superclasses;
+      Hashtbl.add finished cls.class_name ()
+    end
+  in
+  (* Per-method checks. *)
+  let check_methods (cls : sourcespan class_info) : unit =
+    let params = StringSet.of_list cls.class_params in
+    List.iter
+      (fun (m : sourcespan method_info) ->
+        (* method generics must not shadow class params; their bounds must be valid *)
+        List.iter
+          (fun (GBName (g, bounds, _)) ->
+            if StringSet.mem g params then
+              failwith
+                (sprintf "type parameter %s of method %s shadows a parameter of class %s" g
+                   m.m_name cls.class_name);
+            List.iter (check_pred_registered cls) bounds )
+          m.m_generics;
+        (* the method type must mention every class param, otherwise no call
+           can determine which instance to use *)
+        let missing = StringSet.diff params (ftv_typ m.m_typ) in
+        if not (StringSet.is_empty missing) then
+          failwith
+            (sprintf "method %s of class %s is ambiguous: its type does not mention %s"
+               m.m_name cls.class_name
+               (String.concat ", " (StringSet.elements missing))) )
+      cls.class_methods
+  in
+  (* Method names are global functions, so they must be unique across ALL
+     classes (built-ins included). A clash with a TOP-LEVEL FUNCTION is not
+     visible from here; is_well_formed reports that as DuplicateFun, because
+     get_method_names puts method names into its scope. *)
+  let method_owner : (string, string) Hashtbl.t = Hashtbl.create 32 in
+  let check_unique_methods (cls : sourcespan class_info) : unit =
+    List.iter
+      (fun (m : sourcespan method_info) ->
+        match Hashtbl.find_opt method_owner m.m_name with
+        | Some owner when owner = cls.class_name ->
+            failwith (sprintf "method %s is declared twice in class %s" m.m_name cls.class_name)
+        | Some owner ->
+            failwith
+              (sprintf "method %s of class %s is already defined by class %s" m.m_name
+                 cls.class_name owner)
+        | None -> Hashtbl.add method_owner m.m_name cls.class_name )
+      cls.class_methods
+  in
+  List.iter
+    (fun cls ->
+      List.iter (check_pred_registered cls) cls.class_superclasses;
+      check_superclass_vars cls )
+    all_classes;
+  List.iter (search StringSet.empty) all_classes;
+  List.iter check_methods all_classes;
+  List.iter check_unique_methods all_classes
 
 let find_method (name : string) : (sourcespan class_info * sourcespan method_info) option =
   (* Search class_table for a method called `name`. Used by monomorphize to tell
