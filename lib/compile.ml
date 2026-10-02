@@ -1907,8 +1907,19 @@ let check_class_defaults (env: sourcespan scheme envt) (d : sourcespan decl) : s
    the elaborated defaults. The only given is `C Self` (plus superclasses), so
    a default may call other methods of the same class but nothing else. *)
 
+let name_of_dfun d =
+  match d with
+  | DFun (name, _, _, _, _, _, _) ->
+    name
+  | _ -> failwith "Name of DFun failure: given non DFun"
+;;
 let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : sourcespan program =
-  failwith "TODO"
+  match p with
+  | Program (decls, loc) -> 
+    let (classes, instances, funs) = partition_decls decls in
+    let new_env = (List.fold_left (fun acc_env decl -> StringMap.add (name_of_dfun decl) (scheme_of_decl decl) acc_env) env funs) in
+    let new_funs = List.map (fun decl -> (check_decl new_env (scheme_of_decl decl) decl)) funs in
+    Program (classes @ instances @ new_funs, loc)
 ;;
 
 (* REPLACES infer_prog and infer_group; it now returns the ELABORATED program
