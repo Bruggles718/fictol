@@ -782,7 +782,7 @@ let get_bind_typs binds =
         | BName (name, _, typ, tag) -> typ
         | _ -> failwith "unsupported binding type" )
       binds
-  in
+;;
 
 let class_info_of_decl (d : sourcespan decl) : sourcespan class_info =
   (* DClass -> class_info. For each method_sig build a method_info:
@@ -1788,13 +1788,13 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
       let inferred_ret_typ = apply_subst_typ body_subst fun_ret_typ in
       let unified_subst = unify new_body_typ inferred_ret_typ loc in
       let final_subst = compose_subst body_subst unified_subst in
-      let final_wanteds = apply_subst_wanteds body_wanteds in
+      let final_wanteds = apply_subst_wanteds final_subst body_wanteds in
       let residual = solve_wanteds givens final_wanteds in (
         match residual with
         | [] -> ()
         | _ -> failwith "Check decl failure: ambiguous type"
       );
-      new_new_body = map_types_in_expr unskolemize_typ (apply_subst_expr final_subst new_body) in
+      let new_new_body = map_types_in_expr unskolemize_typ (apply_subst_expr final_subst new_body) in
       DFun (name, generic_binds, args, new_new_body, call_type, ret_typ, loc)
     | _ -> failwith "Check decl failure: scheme type was not TyArrow"
   )
