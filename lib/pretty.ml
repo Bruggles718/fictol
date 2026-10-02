@@ -225,6 +225,20 @@ let rec string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl)
            " -> " ^ typ_str )
         (string_of_expr_with (depth - 1) print_a body)
         (print_a a)
+  | DClass (name, params, superclasses, method_sigs, a) -> 
+    sprintf "(typeclass %s%s%s:\n%s)"
+    name
+    (let gens = ExtString.String.join ", " params in
+         if List.length params > 0 then
+           "<" ^ gens ^ ">"
+         else
+           gens )
+    (let superclasses_str = ExtString.String.join " + " (List.map string_of_pred superclasses) in
+    if List.length superclasses > 0 then
+      " extends " ^ superclasses_str
+    else
+      "")
+      ""
   | _ -> ""
 ;;
 
