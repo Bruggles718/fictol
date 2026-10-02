@@ -121,3 +121,52 @@ let add_phase (log : 'b -> phase) (next : 'a -> 'b) (cur_pipeline : 'a pipeline)
 ;;
 
 let no_op_phase (cur_pipeline : 'a pipeline) = cur_pipeline
+
+let print_trace (trace : phase list) : string list =
+  let phase_name p =
+    match p with
+    | Source _ -> "Source"
+    | Parsed _ -> "Parsed"
+    | WellFormed _ -> "Well-formed"
+    | Renamed _ -> "Renamed"
+    | Desugared _ -> "Desugared"
+    | TypeChecked _ -> "Type-checked"
+    | TypeNamesResolved _ -> "Type-names-resolved"
+    | Monomorphized _ -> "Monomorphized"
+    (* | AddedNatives _ -> "Natives Added"
+    | Tagged _ -> "Tagged"
+    | ANFed _ -> "ANF'ed"
+    | Located _ -> "Located" *)
+    | Result _ -> "Result"
+    (* | Preprocessed _ -> "Preprocessed" *)
+  in
+  let string_of_phase p =
+    match p with
+    | Source s -> s
+    (* | Preprocessed s -> s *)
+    | Parsed p | WellFormed p -> string_of_program p
+    | Renamed p -> string_of_program p
+    | Desugared p -> string_of_program p
+    | TypeChecked p -> string_of_program p
+    | TypeNamesResolved p -> string_of_program p
+    | Monomorphized p -> string_of_program p
+    (* | AddedNatives p -> string_of_program p
+    | Tagged p -> string_of_program_with 1000 (fun tag -> sprintf "@%d" tag) p
+    | ANFed p -> string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
+    | Located (p, e) ->
+        string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
+        ^ "\nEnvs:\n"
+        ^ ExtString.String.join "\n"
+            (List.map
+               (fun (tag, env) ->
+                 string_of_int tag
+                 ^ ":\n\t"
+                 ^ ExtString.String.join "\n\t"
+                     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) env) )
+               e ) *)
+    | Result s -> s
+  in
+  List.mapi
+    (fun n p -> sprintf "Phase %d (%s):\n%s" n (phase_name p) (string_of_phase p))
+    (List.rev trace)
+;;

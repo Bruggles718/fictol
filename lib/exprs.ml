@@ -76,14 +76,14 @@ and 'a method_sig =
 type 'a decl =
   | DFun of string * 'a generic_bind list * 'a bind list * 'a expr * call_type * 'a typ * 'a
   | DClass of string * string list * 'a predicate list * 'a method_sig list * 'a
-  | DInstance of 'a generic_bind list * 'a predicate * 'a decl list * 'a
+  | DInstance of 'a generic_bind list * 'a predicate * 'a method_impl list * 'a
 
-type 'a program = Program of 'a decl list * 'a
-
-type method_impl =
-  | ImplDecl of sourcespan decl (* checked + elaborated user-written DFun *)
+and 'a method_impl =
+  | ImplDecl of 'a decl (* checked + elaborated user-written DFun *)
   | ImplPrim1 of prim1 (* built-in instance: emit this primitive *)
   | ImplPrim2 of prim2
+
+type 'a program = Program of 'a decl list * 'a
 
 (* type 'a immexpr =
   (* immediate expressions *)

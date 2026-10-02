@@ -1,0 +1,5 @@
+def gen_add<T>(a: T, b: T) -> T:
+    a + b
+
+def main() -> i32:
+    add(5, 7)
