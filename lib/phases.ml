@@ -26,6 +26,7 @@ type phase =
   | Renamed of tag program
   | Desugared of sourcespan program
   | TypeNamesResolved of sourcespan program
+  | Monomorphized of sourcespan program
   (* | AddedNatives of sourcespan program *)
   (* | Tagged of tag program
   | ANFed of tag aprogram *)
@@ -44,6 +45,8 @@ let well_formed p = WellFormed p
 let type_checked p = TypeChecked p
 
 let type_names_resolved p = TypeNamesResolved p
+
+let monomorphized p = Monomorphized p
 
 let renamed p = Renamed p
 

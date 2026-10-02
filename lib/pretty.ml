@@ -79,8 +79,11 @@ let rec string_of_tykind (t : tykind) =
   | Skolem s -> s
   | Int w -> (
     match w with
+    | I8 -> "i8"
+    | I16 -> "i16"
     | I32 -> "i32"
-    | _ -> failwith "not supported int width currently" )
+    | I64 -> "i64"
+    | I128 -> "i128" )
 ;;
 
 let rec string_of_typ (t : 'a typ) : string =
@@ -180,7 +183,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         sprintf "(%s%s(%s))%s" (string_of_call_type call_type) (string_of_expr func)
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
-    | ETyApp(e, typs, a) -> string_of_expr e 
+    | ETyApp (e, typs, a) -> string_of_expr e
 ;;
 
 (* | ELetRec (binds, body, a) ->
