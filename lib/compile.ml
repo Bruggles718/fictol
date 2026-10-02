@@ -1784,7 +1784,7 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
         (fun acc arg t -> StringMap.add (name_of_bind arg) (SForall ([], [], t)) acc)
         env args fun_args
       in
-      let (body_subst, new_body_typ, body_wanteds, new_body) = infer_exp_elab body_env body in
+      let (body_subst, new_body_typ, body_wanteds, new_new_body) = infer_exp_elab body_env new_body in
       let inferred_ret_typ = apply_subst_typ body_subst fun_ret_typ in
       let unified_subst = unify new_body_typ inferred_ret_typ loc in
       let final_subst = compose_subst body_subst unified_subst in
@@ -1794,8 +1794,8 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
         | [] -> ()
         | _ -> failwith "Check decl failure: ambiguous type"
       );
-      let new_new_body = map_types_in_expr unskolemize_typ (apply_subst_expr final_subst new_body) in
-      DFun (name, generic_binds, args, new_new_body, call_type, ret_typ, loc)
+      let new_new_new_body = map_types_in_expr unskolemize_typ (apply_subst_expr final_subst new_new_body) in
+      DFun (name, generic_binds, args, new_new_new_body, call_type, ret_typ, loc)
     | _ -> failwith "Check decl failure: scheme type was not TyArrow"
   )
   | _ -> failwith "Check decl failure: cannot check non DFun"
@@ -1826,7 +1826,40 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
    No substitution leaks out: schemes are closed, so nothing needs threading
    between declarations. *)
 
-let check_instance (d : sourcespan decl) : sourcespan decl = failwith "TODO"
+let find_method_info cls d =
+    match d with
+    | DFun (name, _, _, _, _, _, _) -> 
+      let result = List.filter (fun method_info -> method_info.m_name = name) cls.class_methods in (
+        match result with
+        | [found_info] -> found_info
+        | _ -> failwith "Find method info failure: no method found"
+      )
+    | _ -> failwith "Find method info failure: given non DFun"
+;;
+
+let check_instance (env : sourcespan scheme envt) (d : sourcespan decl) : sourcespan decl =
+  match d with
+  | DInstance(generic_binds, instance_head, method_decls, loc) ->
+    let cls = lookup_class instance_head.pred_class in
+    let maybe_instance_info = find_instance instance_head in (
+      match maybe_instance_info with
+      | Some((instance_info, subst)) -> 
+        check_superclass_obligations instance_info;
+        let elaborated_decls = 
+          List.map
+          (fun decl ->
+            let method_info = find_method_info cls decl in
+            (method_info.m_name, check_decl env (instance_method_scheme instance_info cls method_info) decl))
+          method_decls
+        in
+        List.iter
+        (fun (name, decl) ->
+          Hashtbl.add method_impl_table (instance_info.instance_id, name) (ImplDecl (decl)))
+        elaborated_decls;
+        DInstance(generic_binds, instance_head, snd (List.split elaborated_decls), loc)
+      | None -> failwith "Check instance failure: no instance found??"
+    )
+  | _ -> failwith "Check instance failure: cannot check non DInstance"
 (* d is a DInstance. Run after ALL classes and instances are registered.
    1. Look up the instance_info and the class.
    2. check_superclass_obligations.
@@ -1836,7 +1869,38 @@ let check_instance (d : sourcespan decl) : sourcespan decl = failwith "TODO"
       ((instance_id, name), ImplDecl d').
    4. Return the DInstance rebuilt with the elaborated methods. *)
 
-let check_class_defaults (d : sourcespan decl) : sourcespan decl = failwith "TODO"
+let method_sig_of_decl d =
+  match d with
+  | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) ->
+    {
+      ms_name = name;
+      ms_generics = generic_binds;
+      ms_args = args;
+      ms_ret = ret_typ;
+      ms_default = Some(body);
+      ms_span = loc
+    }
+  | _ -> failwith "Method sig of decl failure: cannot convert non DFun to method sig"
+;;
+let check_class_defaults (env: sourcespan scheme envt) (d : sourcespan decl) : sourcespan decl =
+  match d with
+  | DClass (name, params, superclasses, method_sigs, loc) ->
+    let cls = lookup_class name in
+    let methods_with_defaults = List.filter (fun method_info ->
+      method_info.m_has_default)
+    cls.class_methods in
+    let elaborated_methods =
+      List.map (fun method_info ->
+        let default_decl = Hashtbl.find default_method_table (name, method_info.m_name) in
+        (method_info.m_name, check_decl env (scheme_of_method cls method_info) default_decl))
+      methods_with_defaults
+    in
+    List.iter
+    (fun (method_name, decl) ->
+      Hashtbl.replace default_method_table (name, method_name) decl)
+    elaborated_methods;
+    DClass (name, params, superclasses, List.map method_sig_of_decl (snd (List.split elaborated_methods)), loc)
+  | _ -> failwith "Check class defaults: given non DClass"
 (* d is a DClass. For each method with a default body, check_decl env
    (scheme_of_method cls m) default_fun, replace the entry in
    default_method_table with the elaborated DFun, and return the DClass with
