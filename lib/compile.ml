@@ -456,7 +456,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
           ( name,
             List.map (helpGeneric generic_env) generics,
             new_args,
-            helpE body,
+            helpE generic_env body,
             call_type,
             resolve_typ_path generic_env typ,
             span )
@@ -480,27 +480,27 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
       ms_generics= List.map (helpGeneric env) s.ms_generics;
       ms_args= List.map (helpBind env) s.ms_args;
       ms_ret= resolve_typ_path env s.ms_ret;
-      ms_default= Option.map helpE s.ms_default }
+      ms_default= Option.map (helpE env) s.ms_default }
   and helpBind env bind =
     match bind with
     | BName (name, shadow, typ, span) -> BName (name, shadow, resolve_typ_path env typ, span)
     | BBlank _ -> bind
   (* | _ -> failwith "should've been desugared" *)
-  and helpE expr =
+  and helpE env expr =
     match expr with
     | ELet (bindings, body, span) ->
         let new_bindings =
           List.map
-            (fun (bind, bind_body, span) -> (helpBind [] bind, helpE bind_body, span))
+            (fun (bind, bind_body, span) -> (helpBind env bind, helpE env bind_body, span))
             bindings
         in
-        ELet (new_bindings, helpE body, span)
-    | EIf (cond, thn, els, span) -> EIf (helpE cond, helpE thn, helpE els, span)
+        ELet (new_bindings, helpE env body, span)
+    | EIf (cond, thn, els, span) -> EIf (helpE env cond, helpE env thn, helpE env els, span)
     | EApp (closure, args, call_type, span) ->
-        EApp (helpE closure, List.map helpE args, call_type, span)
-    | ESeq (e1, e2, span) -> ESeq (helpE e1, helpE e2, span)
-    | EPrim1 (op, body, span) -> EPrim1 (op, helpE body, span)
-    | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE l, helpE r, span)
+        EApp (helpE env closure, List.map (helpE env) args, call_type, span)
+    | ESeq (e1, e2, span) -> ESeq (helpE env e1, helpE env e2, span)
+    | EPrim1 (op, body, span) -> EPrim1 (op, helpE env body, span)
+    | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE env l, helpE env r, span)
     | _ -> expr
   in
   helpP p
@@ -649,8 +649,8 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
         []
       else
         failwith
-          (sprintf "Unification failure at <%s>: inconsistent type constants"
-             (string_of_sourcespan span) )
+          (sprintf "Unification failure at <%s>: inconsistent type constants %s and %s"
+             (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2))
   | TyArrow (t1_args, t1_ret_ty), TyArrow (t2_args, t2_ret_ty)
    |TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
@@ -730,9 +730,9 @@ let rec show_typ (t : 'a typ) : string =
   | TyPath (path, _) -> String.concat "::" path
 ;;
 
-let string_of_pred (p : 'a predicate) : string =
+(* let string_of_pred (p : 'a predicate) : string =
   String.concat " " (p.pred_class :: List.map show_typ p.pred_args)
-;;
+;; *)
 
 let apply_subst_wanted (subst : 'a typ subst) (w : 'a wanted) : 'a wanted =
   {w_pred= apply_subst_pred subst w.w_pred; w_span= w.w_span}
@@ -744,13 +744,27 @@ let apply_subst_wanteds (subst : 'a typ subst) (ws : 'a wanted list) : 'a wanted
 
 (* Substitute inside w.w_pred; keep w.w_span. *)
 
+let rec typ_equal (t1 : 'a typ) (t2 : 'a typ) : bool =
+  match t1, t2 with
+  | TyVar v1, TyVar v2 -> v1 = v2
+  | TyCon k1, TyCon k2 -> k1 = k2
+  | TyArrow (args1, ret1), TyArrow (args2, ret2) ->
+      List.length args1 = List.length args2
+      && List.for_all2 typ_equal args1 args2
+      && typ_equal ret1 ret2
+  | TyApp (f1, args1), TyApp (f2, args2) ->
+      List.length args1 = List.length args2
+      && typ_equal f1 f2
+      && List.for_all2 typ_equal args1 args2
+  | TyPath (path1, _), TyPath (path2, _) -> path1 = path2
+  | TyBlank _, TyBlank _ -> true
+  | _ -> false
+;;
+
 let pred_equal (p1 : 'a predicate) (p2 : 'a predicate) : bool =
-  (* Same class name and pairwise-equal args after untagTyp. Do NOT use plain
-   `=` on predicates: TyBlank / TyPath carry source spans and would compare
-   unequal. (Your commented check_instance_exists used `=`.) *)
   p1.pred_class = p2.pred_class
-  && List.combine p1.pred_args p2.pred_args
-     |> List.for_all (fun (t1, t2) -> untagTyp t1 = untagTyp t2)
+  && List.length p1.pred_args = List.length p2.pred_args
+  && List.for_all2 typ_equal p1.pred_args p2.pred_args
 ;;
 
 let fresh_subst (vars : string list) : 'a typ subst =
@@ -999,22 +1013,15 @@ let method_env () : sourcespan scheme envt =
 ;;
 
 let rec superclass_closure (p : 'a predicate) : 'a predicate list =
-  (* p itself plus every transitive superclass, instantiated. For p = C [t1..tn]:
-   substitute class_params |-> [t1..tn] into each of class(C).class_superclasses,
-   and recurse on each result. Terminates because validate_classes proved the
-   graph acyclic. Example: superclass_closure {Ord;[i32]} = [Ord i32; Eq i32].
-   This is Haskell's `bySuper`. *)
   let cls = lookup_class p.pred_class in
-  let args = p.pred_args in
   let params = cls.class_params in
-  let superclasses = cls.class_superclasses in
-  (* for each superclass -> create pred that is class name, substituted args for each param
-  recurse on that pred.*)
+  let subst = List.combine params p.pred_args in
+
   let instantiated_superclasses =
-    List.map (apply_subst_pred (List.combine params args)) superclasses
+    List.map (apply_subst_pred subst) cls.class_superclasses
   in
-  List.concat (List.map superclass_closure instantiated_superclasses)
-;;
+
+  p :: List.concat (List.map superclass_closure instantiated_superclasses)
 
 let name_of_dfun d =
   match d with
@@ -1199,13 +1206,14 @@ let find_instance (p : sourcespan predicate) :
    which (via has_meta_vars). Haskell calls this `byInst`. *)
 
 let given_closure (givens : 'a predicate list) : 'a predicate list =
-  List.map superclass_closure givens |> List.concat
+  List.concat (List.map superclass_closure givens)
 ;;
 
 (* concat_map superclass_closure givens. With givens [Ord T] the closure is
    [Ord T; Eq T], so a wanted `Eq T` is solved without a separate Eq bound. *)
 
 let rec solve_wanted (givens : 'a predicate list) (w : sourcespan wanted) : sourcespan wanted list =
+  if List.exists (fun pred -> pred_equal w.w_pred pred) (given_closure givens) then [] else
   match List.filter (fun pred -> pred_equal w.w_pred pred) (given_closure givens) with
   | [] -> (
     match find_instance w.w_pred with
@@ -1218,7 +1226,7 @@ let rec solve_wanted (givens : 'a predicate list) (w : sourcespan wanted) : sour
         if has_meta_vars w.w_pred then
           [w]
         else
-          failwith "Solve wanted failure: no instance" )
+          failwith (sprintf "Solve wanted failure: no instance %s" (string_of_pred w.w_pred)) )
   | _ :: _ -> []
 (* Try to discharge ONE wanted. Returns the residual wanteds that remain stuck;
    [] means fully solved. Raises NoInstance when definitely unsatisfiable.
@@ -1312,14 +1320,14 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
           (fun arg ->
             match arg with
             | BName (_, _, typ, _) -> typ
-            | _ -> failwith "Unsupported binding type" )
+            | _ -> failwith "Scheme of decl failure: Unsupported binding type" )
           args
       in
       SForall
         ( List.map name_of_generic_bind generics,
           List.concat (List.map predicates_of_generic_bind generics),
           TyArrow (arg_tvs, ret_typ) )
-  | _ -> failwith "Cannot get scheme of non DFun"
+  | _ -> failwith "Scheme of decl failure: Cannot get scheme of non DFun"
 ;;
 
 (* DFun(name, generics, args, _, _, ret, _) ->
@@ -1346,7 +1354,6 @@ let skolemize (s : 'a scheme) : 'a typ subst * 'a predicate list * 'a typ =
 
 let instance_method_scheme (inst : 'a instance_info) (cls : 'a class_info) (m : 'a method_info) :
     'a scheme =
-  let cls = lookup_class inst.instance_head.pred_class in
   SForall
     ( inst.instance_vars @ List.map name_of_generic_bind m.m_generics,
       inst.instance_context @ List.concat (List.map predicates_of_generic_bind m.m_generics),
@@ -1613,7 +1620,7 @@ let infer_prog (env : sourcespan scheme envt) (p : sourcespan program) : sources
 let map_types_in_bind f b =
   match b with
   | BName (name, shadow, typ, tag) -> BName (name, shadow, f typ, tag)
-  | _ -> failwith "Unsupported binding type"
+  | BBlank _ -> b
 ;;
 
 let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =

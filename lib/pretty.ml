@@ -76,7 +76,7 @@ let name_of_op2 op =
 let rec string_of_tykind (t : tykind) =
   match t with
   | Bool -> "bool"
-  | Skolem s -> s
+  | Skolem s -> "Skolem(" ^ s ^ ")"
   | Int w -> (
     match w with
     | I8 -> "i8"
@@ -95,13 +95,13 @@ let rec string_of_typ (t : 'a typ) : string =
       ^ ExtString.String.join ", " (List.map string_of_typ ty_lst)
       ^ ") -> "
       ^ string_of_typ ret_ty
-  | TyBlank _ -> ""
+  | TyBlank _ -> "blank"
   | TyApp (generic_ty, generic_param_ty_lst) ->
       string_of_typ generic_ty
       ^ "<"
       ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst)
       ^ ">"
-  | TyPath (path, _) -> ExtString.String.join "::" path
+  | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
 ;;
 
 let rec string_of_bind (b : 'a bind) : string =
@@ -120,7 +120,8 @@ let rec string_of_bind (b : 'a bind) : string =
 (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
 
 let string_of_pred pred =
-  pred.pred_class ^ "<" ^ ExtString.String.join ", " (List.map string_of_typ pred.pred_args) ^ ">"
+  sprintf "%s<%s>" pred.pred_class
+    (ExtString.String.join ", " (List.map string_of_typ pred.pred_args))
 ;;
 
 let rec string_of_generic_bind (b : 'a generic_bind) : string =
