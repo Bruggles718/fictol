@@ -208,66 +208,68 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
 
-
-let string_of_func_sig_with depth print_a name generics args (body: 'a expr option) call_type typ a =
+let string_of_func_sig_with depth print_a name generics args (body : 'a expr option) call_type typ a
+    =
   sprintf "(def %s%s(%s)%s%s)%s" name
-        (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
-         if List.length generics > 0 then
-           "<" ^ gens ^ ">"
-         else
-           gens )
-        (ExtString.String.join ", " (List.map string_of_bind args))
-        (let typ_str = string_of_typ typ in
-         if String.length typ_str <= 0 then
-           ""
-         else
-           " -> " ^ typ_str )
-        (
-          match body with
-          | Some(body) -> ":\n  " ^ string_of_expr_with (depth - 1) print_a body
-          | None -> ";"
-        )
-        (print_a a)
+    (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
+     if List.length generics > 0 then
+       "<" ^ gens ^ ">"
+     else
+       gens )
+    (ExtString.String.join ", " (List.map string_of_bind args))
+    (let typ_str = string_of_typ typ in
+     if String.length typ_str <= 0 then
+       ""
+     else
+       " -> " ^ typ_str )
+    ( match body with
+    | Some body -> ":\n  " ^ string_of_expr_with (depth - 1) print_a body
+    | None -> ";" )
+    (print_a a)
+;;
 
 let rec string_of_impl_decl_with depth print_a impl_d =
   match impl_d with
-  | ImplDecl (decl) -> string_of_decl_with depth print_a decl
-  | ImplPrim1 (op) -> string_of_op1 op
+  | ImplDecl decl -> string_of_decl_with depth print_a decl
+  | ImplPrim1 op -> string_of_op1 op
   | ImplPrim2 op -> string_of_op2 op
 
 and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
   | DFun (name, generics, args, body, call_type, typ, a) ->
-      string_of_func_sig_with depth print_a name generics args (Some(body)) call_type typ a
-  | DClass (name, params, superclasses, method_sigs, a) -> 
-    sprintf "(typeclass %s%s%s:\n  %s)%s"
-    name
-    (let gens = ExtString.String.join ", " params in
+      string_of_func_sig_with depth print_a name generics args (Some body) call_type typ a
+  | DClass (name, params, superclasses, method_sigs, a) ->
+      sprintf "(typeclass %s%s%s:\n  %s)%s" name
+        (let gens = ExtString.String.join ", " params in
          if List.length params > 0 then
            "<" ^ gens ^ ">"
          else
            gens )
-    (let superclasses_str = ExtString.String.join " + " (List.map string_of_pred superclasses) in
-    if List.length superclasses > 0 then
-      " extends " ^ superclasses_str
-    else
-      "")
-    (ExtString.String.join "\n  " (List.map 
-    (fun ms ->
-      string_of_func_sig_with depth print_a ms.ms_name ms.ms_generics ms.ms_args ms.ms_default FictolFunc ms.ms_ret ms.ms_span)
-    method_sigs))
-    (print_a a)
+        (let superclasses_str =
+           ExtString.String.join " + " (List.map string_of_pred superclasses)
+         in
+         if List.length superclasses > 0 then
+           " extends " ^ superclasses_str
+         else
+           "" )
+        (ExtString.String.join "\n  "
+           (List.map
+              (fun ms ->
+                string_of_func_sig_with depth print_a ms.ms_name ms.ms_generics ms.ms_args
+                  ms.ms_default FictolFunc ms.ms_ret ms.ms_span )
+              method_sigs ) )
+        (print_a a)
   | DInstance (generics, head, method_impls, a) ->
-    sprintf "(instance%s %s:\n  %s)%s"
-    (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
+      sprintf "(instance%s %s:\n  %s)%s"
+        (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
          if List.length generics > 0 then
            "<" ^ gens ^ ">"
          else
            gens )
-    (string_of_pred head)
-    (ExtString.String.join "\n  " (List.map (string_of_impl_decl_with depth print_a) method_impls))
-    (print_a a)
-
+        (string_of_pred head)
+        (ExtString.String.join "\n  "
+           (List.map (string_of_impl_decl_with depth print_a) method_impls) )
+        (print_a a)
 ;;
 
 let string_of_decl (d : 'a decl) : string = string_of_decl_with 1000 (fun _ -> "") d
@@ -275,7 +277,7 @@ let string_of_decl (d : 'a decl) : string = string_of_decl_with 1000 (fun _ -> "
 let string_of_program_with (depth : int) (print_a : 'a -> string) (p : 'a program) : string =
   match p with
   | Program (decls, a) ->
-      (ExtString.String.join "\n" (List.map (string_of_decl_with depth print_a) decls))
+      ExtString.String.join "\n" (List.map (string_of_decl_with depth print_a) decls)
       ^ "\n"
       ^ print_a a
 ;;

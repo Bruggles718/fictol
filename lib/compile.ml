@@ -80,6 +80,7 @@ let class_table : (string, sourcespan class_info) Hashtbl.t = Hashtbl.create 8
 (* class name -> info *)
 
 let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl.create 8
+
 (* class name -> all instances of that class. This replaces your commented-out
    `classes` / `instances`. Concrete `sourcespan` instead of `'a` avoids weak
    type variables on a top-level Hashtbl. *)
@@ -159,61 +160,51 @@ let add_builtins (p : sourcespan program) : sourcespan program =
     | I64 -> "i64"
     | I128 -> "i128"
   in *)
-  let int_types = List.map (fun w -> (TyCon (Int w))) widths in
-  let bool_type = (TyCon Bool) in
+  let int_types = List.map (fun w -> TyCon (Int w)) widths in
+  let bool_type = TyCon Bool in
   let self = TyVar "Self" in
   let params_self = ["Self"] in
-  let make_arg name typ =
-    (BName(name, false, typ, dummy_span))
-  in
+  let make_arg name typ = BName (name, false, typ, dummy_span) in
   let make_prim2_method name ret_typ =
-    {
-      ms_name = name;
-      ms_generics = [];
-      ms_args = [make_arg "a" self; make_arg "b" self];
-      ms_ret = ret_typ;
-      ms_default = None;
-      ms_span = dummy_span
-    }
+    { ms_name= name;
+      ms_generics= [];
+      ms_args= [make_arg "a" self; make_arg "b" self];
+      ms_ret= ret_typ;
+      ms_default= None;
+      ms_span= dummy_span }
   in
   let make_prim1_method name ret_typ =
-    {
-      ms_name = name;
-      ms_generics = [];
-      ms_args = [make_arg "a" self];
-      ms_ret = ret_typ;
-      ms_default = None;
-      ms_span = dummy_span
-    }
+    { ms_name= name;
+      ms_generics= [];
+      ms_args= [make_arg "a" self];
+      ms_ret= ret_typ;
+      ms_default= None;
+      ms_span= dummy_span }
   in
-  let make_math_method name =
-    make_prim2_method name self
-  in
-  let make_superclass name typs =
-    { pred_class = name; pred_args = typs}
-  in
+  let make_math_method name = make_prim2_method name self in
+  let make_superclass name typs = {pred_class= name; pred_args= typs} in
   let make_class name params superclasses methods =
-    DClass(
-      name,
-      params,
-      superclasses,
-      methods,
-      dummy_span
-    )
+    DClass (name, params, superclasses, methods, dummy_span)
   in
-  let math_classes = List.map (fun (cls_name, method_name) -> 
-    make_class cls_name params_self [] [(make_math_method method_name)])
-    (List.map overloaded_prim2 [Plus; Minus; Times; Divide] |>
-    (List.map (fun maybe_op -> match maybe_op with | Some(res) -> (res) | None -> failwith "seriously what??")))
+  let math_classes =
+    List.map
+      (fun (cls_name, method_name) ->
+        make_class cls_name params_self [] [make_math_method method_name] )
+      ( List.map overloaded_prim2 [Plus; Minus; Times; Divide]
+      |> List.map (fun maybe_op ->
+          match maybe_op with
+          | Some res -> res
+          | None -> failwith "seriously what??" ) )
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" bool_type] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" bool_type] in
-  let ord_class = make_class "Ord" params_self [make_superclass "Eq" [self]] [
-    make_prim2_method "gt" bool_type;
-    make_prim2_method "ge" bool_type;
-    make_prim2_method "lt" bool_type;
-    make_prim2_method "le" bool_type;
-  ]
+  let ord_class =
+    make_class "Ord" params_self
+      [make_superclass "Eq" [self]]
+      [ make_prim2_method "gt" bool_type;
+        make_prim2_method "ge" bool_type;
+        make_prim2_method "lt" bool_type;
+        make_prim2_method "le" bool_type ]
   in
   let built_in_classes = math_classes @ [eq_class; ord_class; neg_class] in
   let name_to_prim2_op name =
@@ -237,34 +228,29 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let inst_prim_for_typ cls typ =
     match cls with
     | DClass (name, params, superclasses, method_sigs, dummy_span) ->
-      let method_impls = 
-        List.map 
-        (fun method_sig -> 
-          try
-            let prim_op = name_to_prim2_op method_sig.ms_name in
-            ImplPrim2 prim_op
-          with
-          | _ ->
-            let prim_op = name_to_prim1_op method_sig.ms_name in
-            ImplPrim1 prim_op)
-        method_sigs
-      in
-      DInstance ([], {pred_class = name; pred_args = [typ]}, method_impls, dummy_span)
+        let method_impls =
+          List.map
+            (fun method_sig ->
+              try
+                let prim_op = name_to_prim2_op method_sig.ms_name in
+                ImplPrim2 prim_op
+              with _ ->
+                let prim_op = name_to_prim1_op method_sig.ms_name in
+                ImplPrim1 prim_op )
+            method_sigs
+        in
+        DInstance ([], {pred_class= name; pred_args= [typ]}, method_impls, dummy_span)
     | _ -> failwith "not class, what??"
   in
-  let instances = 
+  let instances =
     List.map
-    (fun (cls, typs) ->
-      List.map
-      (fun typ ->
-        inst_prim_for_typ cls typ)
-        typs)
-    ((List.map (fun cls -> (cls, int_types)) built_in_classes))
+      (fun (cls, typs) -> List.map (fun typ -> inst_prim_for_typ cls typ) typs)
+      (List.map (fun cls -> (cls, int_types)) built_in_classes)
     |> List.concat
   in
   match p with
-  | Program (decls, loc) ->
-    Program (built_in_classes @ instances @ decls, loc)
+  | Program (decls, loc) -> Program (built_in_classes @ instances @ decls, loc)
+;;
 
 let wf_class_decl (d : sourcespan decl) : exn list = []
 (* wf for DClass: duplicate method names within the class, duplicate params,
@@ -445,9 +431,9 @@ let desugar (p : sourcespan program) : sourcespan program =
     size_check_bind :: List.flatten (List.mapi tupleBind binds) *)
   and helpG g = List.map helpD g
   and helpImplD impl_d =
-    (match impl_d with
-    | ImplDecl (decl) -> ImplDecl (helpD decl)
-    | ImplPrim1 _ | ImplPrim2 _ -> impl_d)
+    match impl_d with
+    | ImplDecl decl -> ImplDecl (helpD decl)
+    | ImplPrim1 _ | ImplPrim2 _ -> impl_d
   and helpD d =
     match d with
     | DFun (name, generics, args, body, call_type, typ, tag) ->
@@ -563,7 +549,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   and helpD decl = helpD_in [] decl
   and helpImplD_in outer impl_d =
     match impl_d with
-    | ImplDecl (decl) -> ImplDecl (helpD_in outer decl)
+    | ImplDecl decl -> ImplDecl (helpD_in outer decl)
     | ImplPrim1 _ | ImplPrim2 _ -> impl_d
   and helpD_in outer decl =
     (* `outer` = type variables already in scope (instance generics for methods) *)
@@ -769,7 +755,7 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
       else
         failwith
           (sprintf "Unification failure at <%s>: inconsistent type constants %s and %s"
-             (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2))
+             (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2) )
   | TyArrow (t1_args, t1_ret_ty), TyArrow (t2_args, t2_ret_ty)
    |TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
@@ -864,7 +850,7 @@ let apply_subst_wanteds (subst : 'a typ subst) (ws : 'a wanted list) : 'a wanted
 (* Substitute inside w.w_pred; keep w.w_span. *)
 
 let rec typ_equal (t1 : 'a typ) (t2 : 'a typ) : bool =
-  match t1, t2 with
+  match (t1, t2) with
   | TyVar v1, TyVar v2 -> v1 = v2
   | TyCon k1, TyCon k2 -> k1 = k2
   | TyArrow (args1, ret1), TyArrow (args2, ret2) ->
@@ -1135,26 +1121,21 @@ let rec superclass_closure (p : 'a predicate) : 'a predicate list =
   let cls = lookup_class p.pred_class in
   let params = cls.class_params in
   let subst = List.combine params p.pred_args in
-
-  let instantiated_superclasses =
-    List.map (apply_subst_pred subst) cls.class_superclasses
-  in
-
+  let instantiated_superclasses = List.map (apply_subst_pred subst) cls.class_superclasses in
   p :: List.concat (List.map superclass_closure instantiated_superclasses)
+;;
 
 let name_of_impldecl_dfun impl_d =
   match impl_d with
-  | ImplDecl(DFun (name, _, _, _, _, _, _)) -> name
+  | ImplDecl (DFun (name, _, _, _, _, _, _)) -> name
   | ImplPrim1 op -> (
-      match overloaded_prim1 op with
-      | Some ((_, name)) -> name
-      | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op1 op))
-    )
+    match overloaded_prim1 op with
+    | Some (_, name) -> name
+    | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op1 op)) )
   | ImplPrim2 op -> (
-      match overloaded_prim2 op with
-      | Some ((_, name)) -> name
-      | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op2 op))
-    )
+    match overloaded_prim2 op with
+    | Some (_, name) -> name
+    | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op2 op)) )
   | _ -> failwith "Cannot get name of non DFun"
 ;;
 
@@ -1173,7 +1154,8 @@ let instance_info_of_decl (d : sourcespan decl) : sourcespan instance_info =
         instance_span= span;
         instance_head= head;
         instance_id=
-          head.pred_class ^ "##" ^ ExtString.String.join "#" (List.map string_of_typ head.pred_args) }
+          head.pred_class ^ "##" ^ ExtString.String.join "#" (List.map string_of_typ head.pred_args)
+      }
   | _ -> failwith "Cannot get instance info of non instance decl"
 ;;
 
@@ -1342,21 +1324,25 @@ let given_closure (givens : 'a predicate list) : 'a predicate list =
    [Ord T; Eq T], so a wanted `Eq T` is solved without a separate Eq bound. *)
 
 let rec solve_wanted (givens : 'a predicate list) (w : sourcespan wanted) : sourcespan wanted list =
-  if List.exists (fun pred -> pred_equal w.w_pred pred) (given_closure givens) then [] else
-  match List.filter (fun pred -> pred_equal w.w_pred pred) (given_closure givens) with
-  | [] -> (
-    match find_instance w.w_pred with
-    | Some (inst, sub) ->
-        solve_wanteds givens
-          (List.map
-             (fun pred -> {w_pred= apply_subst_pred sub pred; w_span= w.w_span})
-             inst.instance_context )
-    | None ->
-        if has_meta_vars w.w_pred then
-          [w]
-        else
-          failwith (sprintf "Solve wanted failure: no instance %s. Add constraint at <%s>" (string_of_pred w.w_pred) (string_of_sourcespan w.w_span)) )
-  | _ :: _ -> []
+  if List.exists (fun pred -> pred_equal w.w_pred pred) (given_closure givens) then
+    []
+  else
+    match List.filter (fun pred -> pred_equal w.w_pred pred) (given_closure givens) with
+    | [] -> (
+      match find_instance w.w_pred with
+      | Some (inst, sub) ->
+          solve_wanteds givens
+            (List.map
+               (fun pred -> {w_pred= apply_subst_pred sub pred; w_span= w.w_span})
+               inst.instance_context )
+      | None ->
+          if has_meta_vars w.w_pred then
+            [w]
+          else
+            failwith
+              (sprintf "Solve wanted failure: no instance %s. Add constraint at <%s>"
+                 (string_of_pred w.w_pred) (string_of_sourcespan w.w_span) ) )
+    | _ :: _ -> []
 (* Try to discharge ONE wanted. Returns the residual wanteds that remain stuck;
    [] means fully solved. Raises NoInstance when definitely unsatisfiable.
    Precondition: the caller already applied the final substitution to w.
@@ -1791,13 +1777,14 @@ let find_method_info cls d =
   let result = List.filter (fun method_info -> method_info.m_name = name) cls.class_methods in
   match result with
   | [found_info] -> found_info
-  | _ -> failwith "Find method info failure: no method found" 
+  | _ -> failwith "Find method info failure: no method found"
 ;;
 
 let check_impl_decl env scheme impl_d =
   match impl_d with
-  | ImplDecl (decl) -> ImplDecl (check_decl env scheme decl)
+  | ImplDecl decl -> ImplDecl (check_decl env scheme decl)
   | ImplPrim1 _ | ImplPrim2 _ -> impl_d
+;;
 
 let check_instance (env : sourcespan scheme envt) (d : sourcespan decl) : sourcespan decl =
   match d with
