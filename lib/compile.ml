@@ -1573,12 +1573,12 @@ let infer_prog (env : sourcespan scheme envt) (p : sourcespan program) : sources
    ones, and rename.
    ===================================================================== *)
 
-let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
-  let map_types_in_bind f b =
+let map_types_in_bind f b =
     match b with
     | BName (name, shadow, typ, tag) -> BName(name, shadow, (f typ), tag)
     | _ -> failwith "Unsupported binding type"
-  in
+;;
+let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
   match e with
   | ESeq (e1, e2, tag) -> ESeq (map_types_in_expr f e1, map_types_in_expr f e2, tag)
   | ELet (bindings, body, tag) ->
@@ -1933,20 +1933,66 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : so
    `generalize` is no longer called for top-level functions. Keep it only if
    you later let functions omit their annotations. *)
 
-let register_builtins () : unit = failwith "TODO"
-(* Called once at the start of type_synth (replaces the commented-out block).
-   Registers:
-     class Add / Sub / Mul / Div  (Self): add/sub/mul/div : (Self, Self) -> Self
-     class Neg (Self): neg : Self -> Self
-     class Eq (Self): eq : (Self, Self) -> bool
-     class Ord (Self): superclass Eq Self; gt/ge/lt/le : (Self, Self) -> bool
-   and instances for each width in [I8; I16; I32; I64; I128] (Eq also for Bool),
-   each with instance_vars = [] and instance_context = []. Also fill
-   method_impl_table with ImplPrim2 Plus / Minus / ... and ImplPrim1 Neg, so
-   that monomorphize can turn the call back into the primitive your code
-   generator already knows. Build the class_infos by hand (or write tiny
-   helpers); there is no source text for them. If you want only i32 at first,
-   register just I32. *)
+let register_builtins () : unit =
+  (* To start with only i32, change this to [I32]. *)
+  let widths = [I8; I16; I32; I64; I128] in
+  let name_of_width w =
+    match w with I8 -> "i8" | I16 -> "i16" | I32 -> "i32" | I64 -> "i64" | I128 -> "i128"
+  in
+  let int_types = List.map (fun w -> (TyCon (Int w), name_of_width w)) widths in
+  let bool_type = (TyCon Bool, "bool") in
+  let self = TyVar "Self" in
+  let self_to_self_to_self = TyArrow ([self; self], self) in
+  let self_to_self_to_bool = TyArrow ([self; self], TyCon Bool) in
+  let self_to_self = TyArrow ([self], self) in
+  let meth name typ = { m_name = name; m_generics = []; m_typ = typ; m_has_default = false } in
+  let make_class ?(supers = []) name methods : sourcespan class_info =
+    { class_name = name;
+      class_params = ["Self"];
+      class_superclasses = supers;
+      class_methods = methods;
+      class_span = dummy_span }
+  in
+  (* One instance of `cls_name` for type `ty`; also records how each method
+     is implemented, so monomorphize can turn a call back into a primitive. *)
+  let make_instance cls_name (ty, ty_name) (impls : (string * method_impl) list)
+      : sourcespan instance_info =
+    let id = cls_name ^ "_" ^ ty_name in
+    List.iter (fun (m, impl) -> Hashtbl.replace method_impl_table (id, m) impl) impls;
+    { instance_id = id;
+      instance_vars = [];
+      instance_head = { pred_class = cls_name; pred_args = [ty] };
+      instance_context = [];
+      instance_methods = List.map fst impls;
+      instance_span = dummy_span }
+  in
+  (* (class, the types it is defined for, method name -> primitive) *)
+  let specs :
+      (sourcespan class_info * (sourcespan typ * string) list * (string * method_impl) list) list =
+    [ (make_class "Add" [meth "add" self_to_self_to_self], int_types, [("add", ImplPrim2 Plus)]);
+      (make_class "Sub" [meth "sub" self_to_self_to_self], int_types, [("sub", ImplPrim2 Minus)]);
+      (make_class "Mul" [meth "mul" self_to_self_to_self], int_types, [("mul", ImplPrim2 Times)]);
+      (make_class "Div" [meth "div" self_to_self_to_self], int_types, [("div", ImplPrim2 Divide)]);
+      (make_class "Neg" [meth "neg" self_to_self], int_types, [("neg", ImplPrim1 Neg)]);
+      (make_class "Eq" [meth "eq" self_to_self_to_bool], int_types @ [bool_type],
+       [("eq", ImplPrim2 Eq)]);
+      (make_class
+         ~supers:[{ pred_class = "Eq"; pred_args = [self] }]
+         "Ord"
+         [ meth "gt" self_to_self_to_bool; meth "ge" self_to_self_to_bool;
+           meth "lt" self_to_self_to_bool; meth "le" self_to_self_to_bool ],
+       int_types,
+       [ ("gt", ImplPrim2 Greater); ("ge", ImplPrim2 GreaterEq);
+         ("lt", ImplPrim2 Less); ("le", ImplPrim2 LessEq) ]) ]
+  in
+  (* replace (not add) the entries, so calling this twice is harmless; it
+     must run BEFORE any user instance is registered. *)
+  List.iter
+    (fun (cls, types, impls) ->
+      Hashtbl.replace class_table cls.class_name cls;
+      Hashtbl.replace instance_table cls.class_name
+        (List.map (fun ty -> make_instance cls.class_name ty impls) types) )
+    specs
 
 type mono_resolution =
   | ResolvedDecl of sourcespan decl * sourcespan typ subst
@@ -1959,16 +2005,78 @@ type mono_state =
     worklist: (string * sourcespan typ list) Queue.t; (* generic fn name, concrete type args *)
     mutable emitted: sourcespan decl list (* finished concrete DFuns *) }
 
-let mangle_name (base : string) (type_args : sourcespan typ list) : string = failwith "TODO"
+let mangle_name (base : string) (type_args : sourcespan typ list) : string =
+  List.fold_left (fun acc typ -> acc ^ "$" ^ (string_of_typ typ)) base type_args
 (* A deterministic, collision-free symbol, e.g. mangle_name "id" [i32] =
    "id$i32". Must be injective on (base, args) and a legal LLVM symbol; escape
    or encode TyArrow / TyApp. Used as both the new decl name and the call
    target, and as the key into `requested`. *)
 
 let resolve_method_call (meth : string) (type_args : sourcespan typ list) : mono_resolution =
-  failwith "TODO"
+  (* Every failure here is a compiler bug, not a user error: type checking
+     already proved that the method, the instance and its implementation exist. *)
+  let ice msg = failwith (sprintf "Resolve method call failure: %s" msg) in
+  (* Stdlib-version independent List.take / List.drop *)
+  let split_at n l =
+    let rec go n acc l =
+      match l with
+      | x :: rest when n > 0 -> go (n - 1) (x :: acc) rest
+      | _ -> (List.rev acc, l)
+    in
+    go n [] l
+  in
+  (* ResolvedDecl for a DFun: bind the DFun's OWN generics, positionally, to
+     the method-level type args, on top of `subst`. The images are all
+     concrete types, and the two domains are disjoint (instance variables vs
+     method generics), so plain concatenation is already the composition you
+     want; compose_subst is only needed when an image mentions variables from
+     the other substitution's domain. *)
+  let resolved_decl (decl : sourcespan decl) (method_args : sourcespan typ list)
+      (subst : sourcespan typ subst) : mono_resolution =
+    match decl with
+    | DFun (name, generic_binds, _, _, _, _, _) ->
+        let names = List.map name_of_generic_bind generic_binds in
+        if List.length names <> List.length method_args then
+          ice
+            (sprintf "%s has %d type parameter(s) but was given %d method type argument(s)" name
+               (List.length names) (List.length method_args));
+        ResolvedDecl (decl, List.combine names method_args @ subst)
+    | _ -> ice "expected a DFun"
+  in
+  if List.exists (fun t -> not (StringSet.is_empty (ftv_typ t))) type_args then
+    ice
+      (sprintf "type arguments of %s are not concrete: %s" meth
+         (String.concat ", " (List.map show_typ type_args)));
+  match find_method meth with
+  | None -> ice (sprintf "method %s not found" meth)
+  | Some (cls, _) -> (
+      let (class_args, method_args) = split_at (List.length cls.class_params) type_args in
+      if List.length class_args <> List.length cls.class_params then
+        ice (sprintf "method %s of class %s needs %d class type argument(s), got %d" meth
+               cls.class_name (List.length cls.class_params) (List.length type_args));
+      let pred = { pred_class = cls.class_name; pred_args = class_args } in
+      match find_instance pred with
+      | None -> ice (sprintf "no instance %s" (string_of_pred pred))
+      | Some (inst, inst_subst) -> (
+          match Hashtbl.find_opt method_impl_table (inst.instance_id, meth) with
+          | Some (ImplPrim1 op) -> ResolvedPrim1 op
+          | Some (ImplPrim2 op) -> ResolvedPrim2 op
+          | Some (ImplDecl d) ->
+              (* instance variables |-> what the instance head matched, plus the
+                 method's own generics |-> method_args *)
+              resolved_decl d method_args inst_subst
+          | None -> (
+              (* the instance relies on the class default; its body is written
+                 over the CLASS parameters, so Self |-> the class args (the
+                 instance's own variables don't appear in it) *)
+              match Hashtbl.find_opt default_method_table (cls.class_name, meth) with
+              | Some d ->
+                  resolved_decl d method_args (List.combine cls.class_params class_args)
+              | None ->
+                  ice
+                    (sprintf "instance %s does not define %s and class %s has no default"
+                       inst.instance_id meth cls.class_name) ) ) )
 ;;
-
 (* `type_args` are CONCRETE (no TyVar). Steps:
    1. (cls, m) = find_method meth. Split type_args into the first
       (List.length cls.class_params) class args and the remaining method args.
@@ -1983,9 +2091,13 @@ let resolve_method_call (meth : string) (type_args : sourcespan typ list) : mono
       (+ method args). A default body that calls other methods of Self gets
       resolved again when it is itself monomorphised. *)
 
+
 let specialize_decl (d : sourcespan decl) (s : sourcespan typ subst) (new_name : string) :
     sourcespan decl =
-  failwith "TODO"
+  match d with
+  | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) ->
+    DFun (new_name, [], (List.map (map_types_in_bind (apply_subst_typ s)) args), apply_subst_expr s body, call_type, apply_subst_typ s ret_typ, loc)
+  | _ -> failwith "Specialize decl failure: given non DFun"
 ;;
 
 (* Copy a DFun with: name = new_name, generics = [], arg and return type
