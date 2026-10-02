@@ -18,6 +18,18 @@ type 'a envt = 'a StringMap.t
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 
+(* After type checking, every node of the AST carries its source span AND its type:
+   `typed_tag expr`, `typed_tag decl`, `typed_tag program`. The AST is already
+   parameterised over its tag, so exprs.ml does not change. What each tag's type means:
+     - expression nodes: the type of that expression (for ETyApp and the EId inside it,
+       the instantiated type of the identifier; for EApp, the result type);
+     - BName binders: the binder's type;   - DFun: the function's TyArrow type;
+     - everything else (BBlank, generic binders, DClass, DInstance, Program, ...):
+       TyBlank, because there is no useful type. *)
+type typed_tag = sourcespan * typ
+
+let blank_tag (loc : sourcespan) : typed_tag = (loc, TyBlank loc)
+
 let t_i32 = TyCon (Int I32)
 
 let t_bool = TyCon Bool
@@ -84,11 +96,17 @@ let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl
 (* class name -> all instances of that class. This replaces your commented-out
    `classes` / `instances`. Concrete `sourcespan` instead of `'a` avoids weak
    type variables on a top-level Hashtbl. *)
-let method_impl_table : (string * string, sourcespan method_impl) Hashtbl.t = Hashtbl.create 32
+let method_impl_table : (string * string, typed_tag method_impl) Hashtbl.t = Hashtbl.create 32
 (* (instance_id, method name) -> implementation *)
 
 let default_method_table : (string * string, sourcespan decl) Hashtbl.t = Hashtbl.create 16
 (* (class name, method name) -> default body, stored as a DFun *)
+
+let typed_default_method_table : (string * string, typed_tag decl) Hashtbl.t = Hashtbl.create 16
+(* Same keys, but the TYPE-CHECKED bodies (filled by check_class_defaults). This is what
+   monomorphisation reads; default_method_table keeps the untyped input that
+   check_class_defaults consumes. method_impl_table is also typed: it is only filled
+   by check_instance, after checking. *)
 
 let reset_class_state () : unit =
   (* Clear all four tables. Call at the start of type_synth so repeated
@@ -96,7 +114,8 @@ let reset_class_state () : unit =
   Hashtbl.clear class_table;
   Hashtbl.clear instance_table;
   Hashtbl.clear method_impl_table;
-  Hashtbl.clear default_method_table
+  Hashtbl.clear default_method_table;
+  Hashtbl.clear typed_default_method_table
 ;;
 
 (* REAL (needed by is_well_formed / infer_prog so they stay exhaustive). *)
@@ -1545,18 +1564,142 @@ let apply_subst_expr (s : typ subst) (e : 'a expr) : 'a expr =
    during inference), and (b) by monomorphize to plug concrete types in for
    generic variables. *)
 
+(* ---------------------------------------------------------------------
+   Typed-tag utilities.
+   --------------------------------------------------------------------- *)
+
+let tag_of_expr (e : 'a expr) : 'a =
+  match e with
+  | ESeq (_, _, t)
+   |ELet (_, _, t)
+   |EPrim1 (_, _, t)
+   |EPrim2 (_, _, _, t)
+   |EIf (_, _, _, t)
+   |ELiteral (_, t)
+   |EId (_, t)
+   |EApp (_, _, _, t)
+   |ETyApp (_, _, t) ->
+      t
+;;
+
+let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
+
+let span_of_expr (e : typed_tag expr) : sourcespan = fst (tag_of_expr e)
+
+(* Rebuild an AST piece with every tag mapped by f. The tag type parameter changes, so
+   predicates (whose 'a is phantom) are rebuilt too. *)
+let map_tags_pred (p : 'a predicate) : 'b predicate =
+  {pred_class= p.pred_class; pred_args= p.pred_args}
+;;
+
+let map_tags_bind (f : 'a -> 'b) (b : 'a bind) : 'b bind =
+  match b with
+  | BBlank tag -> BBlank (f tag)
+  | BName (name, shadow, typ, tag) -> BName (name, shadow, typ, f tag)
+;;
+
+let map_tags_generic (f : 'a -> 'b) (g : 'a generic_bind) : 'b generic_bind =
+  match g with
+  | GBName (name, preds, tag) -> GBName (name, List.map map_tags_pred preds, f tag)
+;;
+
+let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
+  let go = map_tags_expr f in
+  match e with
+  | ESeq (e1, e2, tag) -> ESeq (go e1, go e2, f tag)
+  | ELet (bindings, body, tag) ->
+      ELet
+        ( List.map (fun (b, bound, btag) -> (map_tags_bind f b, go bound, f btag)) bindings,
+          go body,
+          f tag )
+  | EPrim1 (op, body, tag) -> EPrim1 (op, go body, f tag)
+  | EPrim2 (op, l, r, tag) -> EPrim2 (op, go l, go r, f tag)
+  | EIf (c, t, el, tag) -> EIf (go c, go t, go el, f tag)
+  | ELiteral (lit, tag) -> ELiteral (lit, f tag)
+  | EId (x, tag) -> EId (x, f tag)
+  | EApp (fn, args, call_type, tag) -> EApp (go fn, List.map go args, call_type, f tag)
+  | ETyApp (body, tys, tag) -> ETyApp (go body, tys, f tag)
+;;
+
+let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
+  { ms_name= ms.ms_name;
+    ms_generics= List.map (map_tags_generic f) ms.ms_generics;
+    ms_args= List.map (map_tags_bind f) ms.ms_args;
+    ms_ret= ms.ms_ret;
+    ms_default= Option.map (map_tags_expr f) ms.ms_default;
+    ms_span= f ms.ms_span }
+;;
+
+let rec map_tags_decl (f : 'a -> 'b) (d : 'a decl) : 'b decl =
+  match d with
+  | DFun (name, generics, args, body, call_type, ret_typ, tag) ->
+      DFun
+        ( name,
+          List.map (map_tags_generic f) generics,
+          List.map (map_tags_bind f) args,
+          map_tags_expr f body,
+          call_type,
+          ret_typ,
+          f tag )
+  | DClass (name, params, supers, sigs, tag) ->
+      DClass
+        (name, params, List.map map_tags_pred supers, List.map (map_tags_method_sig f) sigs, f tag)
+  | DInstance (generics, head, impls, tag) ->
+      DInstance
+        ( List.map (map_tags_generic f) generics,
+          map_tags_pred head,
+          List.map (map_tags_impl f) impls,
+          f tag )
+
+and map_tags_impl (f : 'a -> 'b) (impl : 'a method_impl) : 'b method_impl =
+  match impl with
+  | ImplDecl d -> ImplDecl (map_tags_decl f d)
+  | ImplPrim1 op -> ImplPrim1 op
+  | ImplPrim2 op -> ImplPrim2 op
+;;
+
+let map_tags_program (f : 'a -> 'b) (p : 'a program) : 'b program =
+  match p with
+  | Program (decls, tag) -> Program (List.map (map_tags_decl f) decls, f tag)
+;;
+
+(* typed program -> plain program, for the pretty printer *)
+let strip_types (p : typed_tag program) : sourcespan program = map_tags_program fst p
+
+(* Untyped pieces that sit inside a typed decl. *)
+let lift_bind (b : sourcespan bind) : typed_tag bind =
+  match b with
+  | BName (name, shadow, typ, loc) -> BName (name, shadow, typ, (loc, typ))
+  | BBlank loc -> BBlank (blank_tag loc)
+;;
+
+let lift_generic (g : sourcespan generic_bind) : typed_tag generic_bind =
+  map_tags_generic blank_tag g
+;;
+
+(* Apply f to every type in a typed expression: the types inside the tags, plus the
+   binder annotations and ETyApp arguments (map_types_in_expr). This is the zonk
+   (final substitution, unskolemize) and the specialisation (generics |-> concrete). *)
+let map_typed_types (f : typ -> typ) (e : typed_tag expr) : typed_tag expr =
+  map_tags_expr (fun (loc, t) -> (loc, f t)) (map_types_in_expr f e)
+;;
+
+let map_typed_bind_types (f : typ -> typ) (b : typed_tag bind) : typed_tag bind =
+  map_tags_bind (fun (loc, t) -> (loc, f t)) (map_types_in_bind f b)
+;;
+
 let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 
 let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
-    typ subst * typ * sourcespan wanted list * sourcespan expr =
+    typ subst * typ * sourcespan wanted list * typed_tag expr =
   let infer_app_typ
-      make_expr
+      (make_expr : typed_tag expr list -> typ -> typed_tag expr)
       (sch_subst : 'a subst)
       (sch_wanteds : sourcespan wanted list)
       (sch_inst : typ)
       (args : sourcespan expr list)
       env
-      span : typ subst * typ * sourcespan wanted list * sourcespan expr =
+      span : typ subst * typ * sourcespan wanted list * typed_tag expr =
     let new_env, new_subst, typs, arg_wanteds, new_args =
       List.fold_left
         (fun (acc_env, acc_subst, acc_typs, acc_wanteds, new_args) arg ->
@@ -1578,27 +1721,30 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     let final_subst = compose_subst new_subst result_subst in
     let ret_typ = apply_subst_typ final_subst ret_typ in
     let all_predicates = apply_subst_wanteds final_subst (sch_wanteds @ arg_wanteds) in
-    (final_subst, ret_typ, all_predicates, make_expr new_args)
+    (final_subst, ret_typ, all_predicates, make_expr new_args ret_typ)
   in
   match e with
-  | ELiteral (LitBool _, _) -> ([], t_bool, [], e)
+  | ELiteral (LitBool b, loc) -> ([], t_bool, [], ELiteral (LitBool b, (loc, t_bool)))
   | ELiteral (LitInt (n, suffix), loc) -> (
     match suffix with
-    | IntSuffix width -> ([], TyCon (Int width), [], e) )
+    | IntSuffix width ->
+        let t = TyCon (Int width) in
+        ([], t, [], ELiteral (LitInt (n, suffix), (loc, t))) )
   | EId (x, loc) ->
       let sub, preds, typ = instantiate_for_decl (StringMap.find x env) in
       let wanteds = List.map (wanted_from_pred loc) preds in
+      let id_tag = (loc, typ) in
       let new_id =
         match sub with
-        | [] -> e
-        | _ :: _ -> ETyApp (EId (x, loc), List.map snd sub, loc)
+        | [] -> EId (x, id_tag)
+        | _ :: _ -> ETyApp (EId (x, id_tag), List.map snd sub, id_tag)
       in
       ([], typ, wanteds, new_id)
   | EPrim1 (op, e, loc) ->
-      let make_expr_args args =
+      let make_expr_args args ret_typ =
         match args with
         | [] -> failwith "what"
-        | first :: _ -> EPrim1 (op, first, loc)
+        | first :: _ -> EPrim1 (op, first, (loc, ret_typ))
       in
       let sch =
         match op with
@@ -1612,9 +1758,9 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
       let sch_cs, sch_inst = instantiate sch in
       infer_app_typ make_expr_args [] (List.map (wanted_from_pred loc) sch_cs) sch_inst [e] env loc
   | EPrim2 (op, l, r, loc) ->
-      let make_expr_args args =
+      let make_expr_args args ret_typ =
         match args with
-        | first :: second :: _ -> EPrim2 (op, first, second, loc)
+        | first :: second :: _ -> EPrim2 (op, first, second, (loc, ret_typ))
         | _ -> failwith "what"
       in
       let sch =
@@ -1652,7 +1798,7 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
       let final_subst = compose_subst (compose_subst subst_so_far unif_subst1) unif_subst2 in
       let final_typ = apply_subst_typ final_subst t_typ in
       let all_constraints = apply_subst_wanteds final_subst (c_cs @ t_cs @ f_cs) in
-      (final_subst, final_typ, all_constraints, EIf (new_cond, new_true, new_false, loc))
+      (final_subst, final_typ, all_constraints, EIf (new_cond, new_true, new_false, (loc, final_typ)))
   | ELet (binds, body, let_loc) ->
       let new_env, new_subst, bind_cs, new_bindings =
         List.fold_left
@@ -1675,19 +1821,24 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
                 ( StringMap.add name (SForall ([], [], b_typ)) new_env,
                   final_subst,
                   acc_cs @ b_cs,
-                  acc_bindings @ [(BName (name, shadow, b_typ, loc), new_e, bloc)] )
-            | x -> (new_env, subst_so_far, acc_cs @ b_cs, acc_bindings @ [(x, new_e, bloc)]) )
+                  acc_bindings
+                  @ [(BName (name, shadow, b_typ, (loc, b_typ)), new_e, (bloc, b_typ))] )
+            | x ->
+                ( new_env,
+                  subst_so_far,
+                  acc_cs @ b_cs,
+                  acc_bindings @ [(lift_bind x, new_e, (bloc, b_typ))] ) )
           (env, [], [], []) binds
       in
       let body_subst, body_typ, body_cs, new_body = infer_exp_elab new_env body in
       let final_subst = compose_subst new_subst body_subst in
       let final_typ = apply_subst_typ final_subst body_typ in
       let all_constraints = apply_subst_wanteds final_subst (bind_cs @ body_cs) in
-      (final_subst, final_typ, all_constraints, ELet (new_bindings, new_body, let_loc))
+      (final_subst, final_typ, all_constraints, ELet (new_bindings, new_body, (let_loc, final_typ)))
   | EApp (closure, args, call_type, loc) ->
       let clo_subst, clo_typ, clo_wanted, new_clo_expr = infer_exp_elab env closure in
       let env = apply_subst_schenv clo_subst env in
-      let make_expr new_args = EApp (new_clo_expr, new_args, call_type, loc) in
+      let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, call_type, (loc, ret_typ)) in
       infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
   | _ -> failwith "bad"
 ;;
@@ -1713,7 +1864,7 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
      contain it). *)
 
 let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : sourcespan decl) :
-    sourcespan decl =
+    typed_tag decl =
   let skolem_subst, givens, fun_typ = skolemize scheme in
   match d with
   | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) -> (
@@ -1739,10 +1890,18 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
         ( match residual with
         | [] -> ()
         | _ -> failwith "Check decl failure: ambiguous type" );
-        let new_new_new_body =
-          map_types_in_expr unskolemize_typ (apply_subst_expr final_subst new_new_body)
-        in
-        DFun (name, generic_binds, args, new_new_new_body, call_type, ret_typ, loc)
+        (* zonk: the final substitution, then skolems back to the generics' TyVars, in
+           every tag type, binder annotation and ETyApp argument *)
+        let zonk t = unskolemize_typ (apply_subst_typ final_subst t) in
+        let typed_body = map_typed_types zonk new_new_body in
+        DFun
+          ( name,
+            List.map lift_generic generic_binds,
+            List.map lift_bind args,
+            typed_body,
+            call_type,
+            ret_typ,
+            (loc, TyArrow (arg_typs, ret_typ)) )
     | _ -> failwith "Check decl failure: scheme type was not TyArrow" )
   | _ -> failwith "Check decl failure: cannot check non DFun"
 ;;
@@ -1780,13 +1939,14 @@ let find_method_info cls d =
   | _ -> failwith "Find method info failure: no method found"
 ;;
 
-let check_impl_decl env scheme impl_d =
+let check_impl_decl env scheme impl_d : typed_tag method_impl =
   match impl_d with
   | ImplDecl decl -> ImplDecl (check_decl env scheme decl)
-  | ImplPrim1 _ | ImplPrim2 _ -> impl_d
+  | ImplPrim1 op -> ImplPrim1 op
+  | ImplPrim2 op -> ImplPrim2 op
 ;;
 
-let check_instance (env : sourcespan scheme envt) (d : sourcespan decl) : sourcespan decl =
+let check_instance (env : sourcespan scheme envt) (d : sourcespan decl) : typed_tag decl =
   match d with
   | DInstance (generic_binds, instance_head, method_impls, loc) -> (
       let cls = lookup_class instance_head.pred_class in
@@ -1806,7 +1966,11 @@ let check_instance (env : sourcespan scheme envt) (d : sourcespan decl) : source
             (fun (name, impl) ->
               Hashtbl.add method_impl_table (instance_info.instance_id, name) impl )
             elaborated_impls;
-          DInstance (generic_binds, instance_head, snd (List.split elaborated_impls), loc)
+          DInstance
+            ( List.map lift_generic generic_binds,
+              map_tags_pred instance_head,
+              snd (List.split elaborated_impls),
+              blank_tag loc )
       | None -> failwith "Check instance failure: no instance found??" )
   | _ -> failwith "Check instance failure: cannot check non DInstance"
 ;;
@@ -1832,7 +1996,7 @@ let method_sig_of_decl d =
   | _ -> failwith "Method sig of decl failure: cannot convert non DFun to method sig"
 ;;
 
-let check_class_defaults (env : sourcespan scheme envt) (d : sourcespan decl) : sourcespan decl =
+let check_class_defaults (env : sourcespan scheme envt) (d : sourcespan decl) : typed_tag decl =
   match d with
   | DClass (name, params, superclasses, method_sigs, loc) ->
       let cls = lookup_class name in
@@ -1846,15 +2010,21 @@ let check_class_defaults (env : sourcespan scheme envt) (d : sourcespan decl) : 
             (method_info.m_name, check_decl env (scheme_of_method cls method_info) default_decl) )
           methods_with_defaults
       in
+      (* the typed bodies go in their own table; default_method_table keeps the untyped input *)
       List.iter
-        (fun (method_name, decl) -> Hashtbl.replace default_method_table (name, method_name) decl)
+        (fun (method_name, decl) ->
+          Hashtbl.replace typed_default_method_table (name, method_name) decl )
         elaborated_methods;
-      DClass
-        ( name,
-          params,
-          superclasses,
-          List.map method_sig_of_decl (snd (List.split elaborated_methods)),
-          loc )
+      (* methods with a default get their elaborated body; the others are just re-tagged *)
+      let typed_sigs =
+        List.map
+          (fun ms ->
+            match List.assoc_opt ms.ms_name elaborated_methods with
+            | Some typed_default -> method_sig_of_decl typed_default
+            | None -> map_tags_method_sig blank_tag ms )
+          method_sigs
+      in
+      DClass (name, params, List.map map_tags_pred superclasses, typed_sigs, blank_tag loc)
   | _ -> failwith "Check class defaults: given non DClass"
 ;;
 
@@ -1870,7 +2040,7 @@ let name_of_dfun d =
   | _ -> failwith "Name of DFun failure: given non DFun"
 ;;
 
-let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : sourcespan program =
+let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : typed_tag program =
   match p with
   | Program (decls, loc) ->
       let classes, instances, funs = partition_decls decls in
@@ -1882,7 +2052,7 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : so
       let new_funs = List.map (fun decl -> check_decl new_env (scheme_of_decl decl) decl) funs in
       let new_instances = List.map (fun inst -> check_instance new_env inst) instances in
       let new_classes = List.map (fun cls -> check_class_defaults new_env cls) classes in
-      Program (new_classes @ new_instances @ new_funs, loc)
+      Program (new_classes @ new_instances @ new_funs, blank_tag loc)
 ;;
 
 (* REPLACES infer_prog and infer_group; it now returns the ELABORATED program
@@ -1897,7 +2067,7 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : so
    you later let functions omit their annotations. *)
 
 type mono_resolution =
-  | ResolvedDecl of sourcespan decl * typ subst
+  | ResolvedDecl of typed_tag decl * typ subst
   (* a DFun body to specialise, plus the substitution for its type variables *)
   | ResolvedPrim1 of prim1
   | ResolvedPrim2 of prim2
@@ -1905,7 +2075,7 @@ type mono_resolution =
 type mono_state =
   { requested: (string, unit) Hashtbl.t; (* mangled names already queued *)
     worklist: (string * typ list) Queue.t; (* generic fn name, concrete type args *)
-    mutable emitted: sourcespan decl list (* finished concrete DFuns *) }
+    mutable emitted: typed_tag decl list (* finished concrete DFuns *) }
 
 let rec typ_to_symbol (t : typ) : string =
   match t with
@@ -1954,7 +2124,7 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
      want; compose_subst is only needed when an image mentions variables from
      the other substitution's domain. *)
   let resolved_decl
-      (decl : sourcespan decl)
+      (decl : typed_tag decl)
       (method_args : typ list)
       (subst : typ subst) : mono_resolution =
     match decl with
@@ -1994,7 +2164,7 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
           (* the instance relies on the class default; its body is written
                  over the CLASS parameters, so Self |-> the class args (the
                  instance's own variables don't appear in it) *)
-          match Hashtbl.find_opt default_method_table (cls.class_name, meth) with
+          match Hashtbl.find_opt typed_default_method_table (cls.class_name, meth) with
           | Some d -> resolved_decl d method_args (List.combine cls.class_params class_args)
           | None ->
               ice
@@ -2016,18 +2186,19 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
       (+ method args). A default body that calls other methods of Self gets
       resolved again when it is itself monomorphised. *)
 
-let specialize_decl (d : sourcespan decl) (s : typ subst) (new_name : string) :
-    sourcespan decl =
+let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : typed_tag decl =
+  let sub = apply_subst_typ s in
   match d with
-  | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) ->
+  | DFun (name, generic_binds, args, body, call_type, ret_typ, (loc, fun_typ)) ->
+      (* every type is substituted: the tags, binders, ETyApp arguments and the signature *)
       DFun
         ( new_name,
           [],
-          List.map (map_types_in_bind (apply_subst_typ s)) args,
-          apply_subst_expr s body,
+          List.map (map_typed_bind_types sub) args,
+          map_typed_types sub body,
           call_type,
-          apply_subst_typ s ret_typ,
-          loc )
+          sub ret_typ,
+          (loc, sub fun_typ) )
   | _ -> failwith "Specialize decl failure: given non DFun"
 ;;
 
@@ -2035,7 +2206,7 @@ let specialize_decl (d : sourcespan decl) (s : typ subst) (new_name : string) :
    annotations substituted, and body = apply_subst_expr s body. The result
    has no type variables left. *)
 
-let rec monomorphize_expr (st : mono_state) (e : sourcespan expr) : sourcespan expr =
+let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag expr =
   match e with
   | EApp (ETyApp (EId (f_name, id_loc), tys, _), args, call_type, loc) -> (
       List.iter
@@ -2044,7 +2215,7 @@ let rec monomorphize_expr (st : mono_state) (e : sourcespan expr) : sourcespan e
           | TyVar _ ->
               raise
                 (InternalCompilerError
-                   (sprintf "Found TyVar in monomorphize_expr at <%s>" (string_of_sourcespan loc))
+                   (sprintf "Found TyVar in monomorphize_expr at <%s>" (string_of_sourcespan (fst loc)))
                 )
           | _ -> () )
         tys;
@@ -2070,6 +2241,8 @@ let rec monomorphize_expr (st : mono_state) (e : sourcespan expr) : sourcespan e
           else
             ();
           EApp (EId (new_name, id_loc), args, call_type, loc) )
+  | EApp (closure, args, call_type, loc) ->
+    EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, call_type, loc)
   | ELet (bindings, body, loc) ->
       let new_bindings =
         List.map (fun (x, b, binding_loc) -> (x, monomorphize_expr st b, binding_loc)) bindings
@@ -2095,7 +2268,7 @@ let rec monomorphize_expr (st : mono_state) (e : sourcespan expr) : sourcespan e
      used as a first-class value) is unsupported today (no closures): raise
      Unsupported.
    - If a TyVar is still present in tys, raise an internal compiler error. *)
-let monomorphize (p : sourcespan program) : sourcespan program =
+let monomorphize (p : typed_tag program) : typed_tag program =
   match p with
   | Program (decls, tag) ->
       let _, _, funs = partition_decls decls in
@@ -2188,7 +2361,7 @@ let monomorphize (p : sourcespan program) : sourcespan program =
       Program (roots @ st.emitted, tag)
 ;;
 
-let type_synth_tc (p : sourcespan program) : sourcespan program fallible =
+let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
   try
     match p with
     | Program (decls, tag) ->
@@ -2232,7 +2405,8 @@ let run_if should_run f =
     no_op_phase
 ;;
 
-let compile_prog (prog : sourcespan program) : string = sprintf "%s" (string_of_program prog)
+let compile_prog (prog : typed_tag program) : string =
+  sprintf "%s" (string_of_program_with 1000 (fun (loc, typ) -> (sprintf "#(%s)" (string_of_typ typ))) prog)
 
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog

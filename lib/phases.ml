@@ -1,11 +1,14 @@
 open Printf
 open Exprs
+open Types
 open Errors
 open Pretty
 
 type 'a name_envt = (string * 'a) list
 
 type 'a tag_envt = (tag * 'a) list
+
+type typed_tag = sourcespan * typ
 
 (* There are lots of ways to work with pipelines of functions that "can fail
    at any point". They all have various drawbacks, though.  See
@@ -22,11 +25,11 @@ type phase =
   (* | Preprocessed of string *)
   | Parsed of sourcespan program
   | WellFormed of sourcespan program
-  | TypeChecked of sourcespan program
+  | TypeChecked of typed_tag program
   | Renamed of tag program
   | Desugared of sourcespan program
   | TypeNamesResolved of sourcespan program
-  | Monomorphized of sourcespan program
+  | Monomorphized of typed_tag program
   (* | AddedNatives of sourcespan program *)
   (* | Tagged of tag program
   | ANFed of tag aprogram *)
