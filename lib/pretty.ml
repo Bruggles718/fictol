@@ -86,7 +86,7 @@ let rec string_of_tykind (t : tykind) =
     | I128 -> "i128" )
 ;;
 
-let rec string_of_typ (t : 'a typ) : string =
+let rec string_of_typ (t : typ) : string =
   match t with
   | TyVar name -> name
   | TyCon tykind -> string_of_tykind tykind

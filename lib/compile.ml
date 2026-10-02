@@ -500,7 +500,7 @@ let desugar (p : sourcespan program) : sourcespan program =
   | Program (decls, tag) -> Program (helpG decls, tag)
 ;;
 
-let rec resolve_typ_path env (typ : 'a typ) =
+let rec resolve_typ_path env (typ : typ) =
   match typ with
   | TyPath (path, t) -> (
     match path with
@@ -611,7 +611,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   helpP p
 ;;
 
-let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 'a typ =
+let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =
   match in_typ with
   | TyVar name ->
       if name = tyvar then
@@ -632,9 +632,9 @@ let rec subst_var_typ ((tyvar : string), (to_typ : 'a typ)) (in_typ : 'a typ) : 
 ;;
 
 let rec subst_var_typ_in_scheme
-    ((tyvar : string), (to_typ : 'a typ))
+    ((tyvar : string), (to_typ : typ))
     (scheme_args : string list)
-    (in_typ : 'a typ) =
+    (in_typ : typ) =
   match in_typ with
   | TyVar name ->
       if name = tyvar then
@@ -657,7 +657,7 @@ let rec subst_var_typ_in_scheme
   | _ -> failwith "should have been resolved by now"
 ;;
 
-let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a scheme) : 'a scheme =
+let rec subst_var_scheme ((tyvar : string), (to_typ : typ)) (in_scheme : 'a scheme) : 'a scheme =
   match in_scheme with
   | SForall (args, predicates, typ) ->
       if List.mem tyvar args then
@@ -670,34 +670,34 @@ let rec subst_var_scheme ((tyvar : string), (to_typ : 'a typ)) (in_scheme : 'a s
         let new_predicates = apply_subst_predicates [(tyvar, to_typ)] predicates in
         SForall (args, new_predicates, new_typ)
 
-and apply_subst_typ (subst : 'a typ subst) (t : 'a typ) : 'a typ =
+and apply_subst_typ (subst : typ subst) (t : typ) : typ =
   List.fold_left (fun acc sub -> subst_var_typ sub acc) t subst
 
-and apply_subst_scheme (subst : 'a typ subst) (s : 'a scheme) : 'a scheme =
+and apply_subst_scheme (subst : typ subst) (s : 'a scheme) : 'a scheme =
   List.fold_left (fun acc sub -> subst_var_scheme sub acc) s subst
 
-and apply_subst_typenv (subst : 'a typ subst) (env : 'a typ envt) : 'a typ envt =
+and apply_subst_typenv (subst : typ subst) (env : typ envt) : typ envt =
   StringMap.map (fun typ -> apply_subst_typ subst typ) env
 
-and apply_subst_schenv (subst : 'a typ subst) (env : 'a scheme envt) : 'a scheme envt =
+and apply_subst_schenv (subst : typ subst) (env : 'a scheme envt) : 'a scheme envt =
   StringMap.map (fun typ -> apply_subst_scheme subst typ) env
 
-and apply_subst_subst (sub1 : 'a typ subst) (sub2 : 'a typ subst) : 'a typ subst =
+and apply_subst_subst (sub1 : typ subst) (sub2 : typ subst) : typ subst =
   List.map (fun (tyvar, to_typ) -> (tyvar, apply_subst_typ sub1 to_typ)) sub2
 
-and apply_subst_pred (subst : 'a typ subst) (p : 'a predicate) : 'a predicate =
+and apply_subst_pred (subst : typ subst) (p : 'a predicate) : 'a predicate =
   {p with pred_args= List.map (apply_subst_typ subst) p.pred_args}
 
-and apply_subst_predicates (subst : 'a typ subst) (predicates : 'a predicate list) :
+and apply_subst_predicates (subst : typ subst) (predicates : 'a predicate list) :
     'a predicate list =
   List.map (apply_subst_pred subst) predicates
 ;;
 
-let compose_subst (sub1 : 'a typ subst) (sub2 : 'a typ subst) : 'a typ subst =
+let compose_subst (sub1 : typ subst) (sub2 : typ subst) : typ subst =
   sub1 @ apply_subst_subst sub1 sub2
 ;;
 
-let rec ftv_typ (t : 'a typ) : StringSet.t =
+let rec ftv_typ (t : typ) : StringSet.t =
   match t with
   | TyCon _ -> StringSet.empty
   | TyVar name -> StringSet.singleton name
@@ -728,9 +728,9 @@ let ftv_env (e : 'a scheme envt) : StringSet.t =
   StringMap.fold (fun _ value acc -> StringSet.union acc value) mapped StringSet.empty
 ;;
 
-let occurs (name : string) (t : 'a typ) = StringSet.mem name (ftv_typ t)
+let occurs (name : string) (t : typ) = StringSet.mem name (ftv_typ t)
 
-let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
+let rec unify (t1 : typ) (t2 : typ) (span : sourcespan) : typ subst =
   let unify_tyvar_other tyvar other =
     if occurs tyvar other then
       match other with
@@ -761,7 +761,7 @@ let rec unify (t1 : 'a typ) (t2 : 'a typ) (span : sourcespan) : 'a typ subst =
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | _ -> failwith (sprintf "Unification failure at <%s>" (string_of_sourcespan span))
 
-and unify_lists (ts1 : 'a typ list) (ts2 : 'a typ list) (span : sourcespan) : 'a typ subst =
+and unify_lists (ts1 : typ list) (ts2 : typ list) (span : sourcespan) : typ subst =
   match (ts1, ts2) with
   | first1 :: rest1, first2 :: rest2 ->
       let sub = unify first1 first2 span in
@@ -789,7 +789,7 @@ let gensym_typ =
   fun str -> sprintf "%s_%d" str (next ())
 ;;
 
-let instantiate (s : 'a scheme) : 'a predicate list * 'a typ =
+let instantiate (s : 'a scheme) : 'a predicate list * typ =
   match s with
   | SForall (args, predicates, typ) ->
       let sub = List.map (fun s -> (s, TyVar (gensym_typ "T"))) args in
@@ -798,14 +798,14 @@ let instantiate (s : 'a scheme) : 'a predicate list * 'a typ =
       (res_constraints, res_typ)
 ;;
 
-let instantiate_for_decl (s : 'a scheme) : (string * 'a typ) list * 'a predicate list * 'a typ =
+let instantiate_for_decl (s : 'a scheme) : (string * typ) list * 'a predicate list * typ =
   match s with
   | SForall (args, predicates, typ) ->
       let sub = List.map (fun v -> (v, TyVar (gensym_typ "T"))) args in
       (sub, apply_subst_predicates sub predicates, apply_subst_typ sub typ)
 ;;
 
-let get_return_typ (typ : 'a typ) =
+let get_return_typ (typ : typ) =
   match typ with
   | TyArrow (_, ret_typ) -> ret_typ
   | _ -> failwith "Expected arrow type"
@@ -818,7 +818,7 @@ let get_return_typ (typ : 'a typ) =
 
 (* REAL: Pretty.string_of_pred printed a typ and I can't see Pretty, so this
    file defines its own (shadowing Pretty's). *)
-let rec show_typ (t : 'a typ) : string =
+let rec show_typ (t : typ) : string =
   match t with
   | TyVar n -> n
   | TyCon (Int I8) -> "i8"
@@ -839,17 +839,17 @@ let rec show_typ (t : 'a typ) : string =
   String.concat " " (p.pred_class :: List.map show_typ p.pred_args)
 ;; *)
 
-let apply_subst_wanted (subst : 'a typ subst) (w : 'a wanted) : 'a wanted =
+let apply_subst_wanted (subst : typ subst) (w : 'a wanted) : 'a wanted =
   {w_pred= apply_subst_pred subst w.w_pred; w_span= w.w_span}
 ;;
 
-let apply_subst_wanteds (subst : 'a typ subst) (ws : 'a wanted list) : 'a wanted list =
+let apply_subst_wanteds (subst : typ subst) (ws : 'a wanted list) : 'a wanted list =
   List.map (apply_subst_wanted subst) ws
 ;;
 
 (* Substitute inside w.w_pred; keep w.w_span. *)
 
-let rec typ_equal (t1 : 'a typ) (t2 : 'a typ) : bool =
+let rec typ_equal (t1 : typ) (t2 : typ) : bool =
   match (t1, t2) with
   | TyVar v1, TyVar v2 -> v1 = v2
   | TyCon k1, TyCon k2 -> k1 = k2
@@ -872,7 +872,7 @@ let pred_equal (p1 : 'a predicate) (p2 : 'a predicate) : bool =
   && List.for_all2 typ_equal p1.pred_args p2.pred_args
 ;;
 
-let fresh_subst (vars : string list) : 'a typ subst =
+let fresh_subst (vars : string list) : typ subst =
   (* Map each v to TyVar (gensym_typ v). Used to rename instance variables apart
    before an overlap check, and to instantiate schemes. *)
   List.map (fun s -> (s, TyVar (gensym_typ s))) vars
@@ -1238,20 +1238,20 @@ let register_instance (inst : sourcespan instance_info) : unit =
   validate_instance inst
 ;;
 
-let rec match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc : 'a typ subst) :
-    'a typ subst option =
+let rec match_typ (pat_vars : StringSet.t) (pat : typ) (target : typ) (acc : typ subst) :
+    typ subst option =
   match (pat, target) with
   | TyVar v, _ when StringSet.mem v pat_vars -> (
       let existing = List.filter (fun (tyvar, typ) -> tyvar = v) acc in
       match existing with
       | [] -> Some ((v, target) :: acc)
       | (tyvar, typ) :: _ ->
-          if untagTyp target = untagTyp typ then
+          if typ_equal target typ then
             Some acc
           else
             None )
   | TyVar v, TyVar t when (not (StringSet.mem v pat_vars)) && v = t -> Some acc
-  | TyCon c, _ when untagTyp target = untagTyp pat -> Some acc
+  | TyCon c, _ when typ_equal target pat -> Some acc
   | TyArrow (pat_args, pat_ret), TyArrow (target_args, target_ret)
    |TyApp (pat_ret, pat_args), TyApp (target_ret, target_args) -> (
       let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
@@ -1263,9 +1263,9 @@ let rec match_typ (pat_vars : StringSet.t) (pat : 'a typ) (target : 'a typ) (acc
 
 and match_typ_list
     (pat_vars : StringSet.t)
-    (pat_lst : 'a typ list)
-    (target_lst : 'a typ list)
-    (acc : 'a typ subst) =
+    (pat_lst : typ list)
+    (target_lst : typ list)
+    (acc : typ subst) =
   List.fold_left
     (fun acc_sub (p, t) ->
       match acc_sub with
@@ -1285,7 +1285,7 @@ and match_typ_list
      until T_5 is known. Return None on any mismatch. *)
 
 let match_pred (pat_vars : StringSet.t) (pat : 'a predicate) (target : 'a predicate) :
-    'a typ subst option =
+    typ subst option =
   if pat.pred_class = target.pred_class then
     match_typ_list pat_vars pat.pred_args target.pred_args []
   else
@@ -1296,7 +1296,7 @@ let match_pred (pat_vars : StringSet.t) (pat : 'a predicate) (target : 'a predic
    threading the accumulator so repeated variables stay consistent. *)
 
 let find_instance (p : sourcespan predicate) :
-    (sourcespan instance_info * sourcespan typ subst) option =
+    (sourcespan instance_info * typ subst) option =
   let all_instances = Hashtbl.find instance_table p.pred_class in
   let rec helper instances =
     match instances with
@@ -1454,7 +1454,7 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
    re-derived the quantified variables from ftv_typ; here they are exactly the
    declared generics. *)
 
-let skolemize (s : 'a scheme) : 'a typ subst * 'a predicate list * 'a typ =
+let skolemize (s : 'a scheme) : typ subst * 'a predicate list * typ =
   match s with
   | SForall (args, predicates, typ) ->
       let sub = List.map (fun v -> (v, TyCon (Skolem v))) args in
@@ -1510,7 +1510,7 @@ let map_types_in_bind f b =
   | BBlank _ -> b
 ;;
 
-let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
+let rec map_types_in_expr (f : typ -> typ) (e : 'a expr) : 'a expr =
   match e with
   | ESeq (e1, e2, tag) -> ESeq (map_types_in_expr f e1, map_types_in_expr f e2, tag)
   | ELet (bindings, body, tag) ->
@@ -1536,7 +1536,7 @@ let rec map_types_in_expr (f : 'a typ -> 'a typ) (e : 'a expr) : 'a expr =
    every expr constructor. This is the one traversal everything else is built
    from. *)
 
-let apply_subst_expr (s : 'a typ subst) (e : 'a expr) : 'a expr =
+let apply_subst_expr (s : typ subst) (e : 'a expr) : 'a expr =
   map_types_in_expr (apply_subst_typ s) e
 ;;
 
@@ -1548,15 +1548,15 @@ let apply_subst_expr (s : 'a typ subst) (e : 'a expr) : 'a expr =
 let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 
 let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
-    sourcespan typ subst * sourcespan typ * sourcespan wanted list * sourcespan expr =
+    typ subst * typ * sourcespan wanted list * sourcespan expr =
   let infer_app_typ
       make_expr
       (sch_subst : 'a subst)
       (sch_wanteds : sourcespan wanted list)
-      (sch_inst : sourcespan typ)
+      (sch_inst : typ)
       (args : sourcespan expr list)
       env
-      span : sourcespan typ subst * sourcespan typ * sourcespan wanted list * sourcespan expr =
+      span : typ subst * typ * sourcespan wanted list * sourcespan expr =
     let new_env, new_subst, typs, arg_wanteds, new_args =
       List.fold_left
         (fun (acc_env, acc_subst, acc_typs, acc_wanteds, new_args) arg ->
@@ -1897,17 +1897,17 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : so
    you later let functions omit their annotations. *)
 
 type mono_resolution =
-  | ResolvedDecl of sourcespan decl * sourcespan typ subst
+  | ResolvedDecl of sourcespan decl * typ subst
   (* a DFun body to specialise, plus the substitution for its type variables *)
   | ResolvedPrim1 of prim1
   | ResolvedPrim2 of prim2
 
 type mono_state =
   { requested: (string, unit) Hashtbl.t; (* mangled names already queued *)
-    worklist: (string * sourcespan typ list) Queue.t; (* generic fn name, concrete type args *)
+    worklist: (string * typ list) Queue.t; (* generic fn name, concrete type args *)
     mutable emitted: sourcespan decl list (* finished concrete DFuns *) }
 
-let rec typ_to_symbol (t : 'a typ) : string =
+let rec typ_to_symbol (t : typ) : string =
   match t with
   | TyVar name -> name
   | TyCon tykind -> string_of_tykind tykind
@@ -1925,7 +1925,7 @@ let rec typ_to_symbol (t : 'a typ) : string =
   | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
 ;;
 
-let mangle_name (base : string) (type_args : sourcespan typ list) : string =
+let mangle_name (base : string) (type_args : typ list) : string =
   List.fold_left (fun acc typ -> acc ^ "_" ^ typ_to_symbol typ) base type_args
 ;;
 
@@ -1934,7 +1934,7 @@ let mangle_name (base : string) (type_args : sourcespan typ list) : string =
    or encode TyArrow / TyApp. Used as both the new decl name and the call
    target, and as the key into `requested`. *)
 
-let resolve_method_call (meth : string) (type_args : sourcespan typ list) : mono_resolution =
+let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution =
   (* Every failure here is a compiler bug, not a user error: type checking
      already proved that the method, the instance and its implementation exist. *)
   let ice msg = failwith (sprintf "Resolve method call failure: %s" msg) in
@@ -1955,8 +1955,8 @@ let resolve_method_call (meth : string) (type_args : sourcespan typ list) : mono
      the other substitution's domain. *)
   let resolved_decl
       (decl : sourcespan decl)
-      (method_args : sourcespan typ list)
-      (subst : sourcespan typ subst) : mono_resolution =
+      (method_args : typ list)
+      (subst : typ subst) : mono_resolution =
     match decl with
     | DFun (name, generic_binds, _, _, _, _, _) ->
         let names = List.map name_of_generic_bind generic_binds in
@@ -2016,7 +2016,7 @@ let resolve_method_call (meth : string) (type_args : sourcespan typ list) : mono
       (+ method args). A default body that calls other methods of Self gets
       resolved again when it is itself monomorphised. *)
 
-let specialize_decl (d : sourcespan decl) (s : sourcespan typ subst) (new_name : string) :
+let specialize_decl (d : sourcespan decl) (s : typ subst) (new_name : string) :
     sourcespan decl =
   match d with
   | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) ->
@@ -2175,7 +2175,7 @@ let monomorphize (p : sourcespan program) : sourcespan program =
             failwith
               (sprintf "Monomorphize failure: %s expects %d type argument(s), got %d" template_name
                  (List.length generic_names) (List.length tys) );
-          let subst : sourcespan typ subst = List.combine generic_names tys in
+          let subst : typ subst = List.combine generic_names tys in
           let specialised = specialize_decl template subst new_name in
           match specialised with
           | DFun (name, generics, args, body, call_type, ret_typ, loc) ->

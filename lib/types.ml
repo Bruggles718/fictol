@@ -1,3 +1,5 @@
+type sourcespan = Lexing.position * Lexing.position
+
 type signed_int_width =
   | I8
   | I16
@@ -17,31 +19,31 @@ type tykind =
      afterwards (see unskolemize_typ). Add a case for it wherever you match on
      tykind (pretty printer, codegen). *)
 
-type 'a typ =
+type typ =
   | TyVar of string
   | TyCon of tykind
-  | TyArrow of 'a typ list * 'a typ
-  | TyBlank of 'a
-  | TyApp of 'a typ * 'a typ list
-  | TyPath of string list * 'a
+  | TyArrow of typ list * typ
+  | TyBlank of sourcespan
+  | TyApp of typ * typ list
+  | TyPath of string list * sourcespan
 
 type 'a predicate =
   { pred_class: string;
-    pred_args: 'a typ list }
+    pred_args: typ list }
 (* UNCHANGED, but now actually used. `Add i32` is
    { pred_class = "Add"; pred_args = [TyCon (Int I32)] }.
    This replaces your `TyApp(TyVar "Add", [TyVar t])` encoding. *)
 
 type 'a generic_bind = GBName of string * 'a predicate list * 'a
-(* CHANGED: the middle field used to be `'a typ list`. Each bound is now a full
+(* CHANGED: the middle field used to be `typ list`. Each bound is now a full
    predicate whose FIRST argument is the generic itself:
        fun f<T: Add + Eq>(..)
          ==> GBName("T", [ {Add;[T]}; {Eq;[T]} ], tag)
    (T written as TyPath(["T"], tag) by the parser, turned into TyVar by
    resolve_prog_typ_paths). Multi-parameter bounds put extra arguments after T. *)
 
-type 'a scheme = SForall of string list * 'a predicate list * 'a typ
-(* CHANGED: the context is `'a predicate list` instead of `'a typ list`. *)
+type 'a scheme = SForall of string list * 'a predicate list * typ
+(* CHANGED: the context is `'a predicate list` instead of `typ list`. *)
 
 type 'a subst = (string * 'a) list
 
@@ -55,7 +57,7 @@ type 'a method_info =
   { m_name: string;
     m_generics: 'a generic_bind list;
     (* the method's OWN type parameters and bounds (beyond the class's) *)
-    m_typ: 'a typ;
+    m_typ: typ;
     (* a TyArrow that may mention the class parameters, e.g. for class Add with
      params ["Self"]: (Self, Self) -> Self *)
     m_has_default: bool }
@@ -87,7 +89,7 @@ type 'a instance_info =
      defaults in the class *)
     instance_span: 'a }
 
-let rec untagTyp t =
+(* let rec untagTyp t =
   match t with
   | TyVar name -> TyVar name
   | TyCon name -> TyCon name
@@ -96,4 +98,4 @@ let rec untagTyp t =
   | TyApp (generic_type, generic_param_types) ->
       TyApp (untagTyp generic_type, List.map untagTyp generic_param_types)
   | TyPath (path, _) -> TyPath (path, ())
-;;
+;; *)
