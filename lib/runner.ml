@@ -14,8 +14,7 @@ open Sys
 let is_import_line (line : string) : string option =
   let prefix = "import " in
   let plen = String.length prefix in
-  if String.length line > plen &&
-     String.sub line 0 plen = prefix then
+  if String.length line > plen && String.sub line 0 plen = prefix then
     let name = String.trim (String.sub line plen (String.length line - plen)) in
     if name <> "" && not (String.contains name ' ') then
       Some name
@@ -24,6 +23,7 @@ let is_import_line (line : string) : string option =
   else
     None
 ;;
+
 (* let rec preprocess (input : string) : string =
   let lines = String.split_on_char '\n' input in
   let processed_lines = List.map (fun line ->
@@ -38,7 +38,6 @@ let is_import_line (line : string) : string option =
     | None -> line
   ) lines in
   String.concat "\n" processed_lines *)
-
 
 (* let rec preprocess_with_visited (input : string) (visited : StringSet.t)
   : string * StringSet.t =
@@ -74,7 +73,6 @@ let is_import_line (line : string) : string option =
 (* let preprocess (input : string) : string =
   let result, _ = preprocess_with_visited input StringSet.empty in
   result *)
-
 
 let result_printer (e : (string, string) result) : string =
   match e with
@@ -118,8 +116,11 @@ let parse_file (name : string) input_file : sourcespan program =
   parse name lexbuf
 ;;
 
-let compile_string_to_string ?(no_builtins = false) ?(no_imports = false) (name : string) (input : string) :
-    string pipeline =
+let compile_string_to_string
+    ?(no_builtins = false)
+    ?(no_imports = false)
+    (name : string)
+    (input : string) : string pipeline =
   Ok (input, [])
   |> add_phase source (fun x -> x)
   (* |> add_phase preprocessed preprocess *)
@@ -127,8 +128,11 @@ let compile_string_to_string ?(no_builtins = false) ?(no_imports = false) (name 
   |> compile_to_string
 ;;
 
-let compile_file_to_string ?(no_builtins = false) ?(no_imports = false) (name : string) (input_file : string) :
-    string pipeline =
+let compile_file_to_string
+    ?(no_builtins = false)
+    ?(no_imports = false)
+    (name : string)
+    (input_file : string) : string pipeline =
   compile_string_to_string ~no_builtins ~no_imports name (string_of_file input_file)
 ;;
 

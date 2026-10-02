@@ -76,22 +76,33 @@ let name_of_op2 op =
 let rec string_of_tykind (t : tykind) =
   match t with
   | Bool -> "bool"
-  | Int(w) ->
-    (match w with
+  | Skolem s -> "Skolem(" ^ s ^ ")"
+  | Int w -> (
+    match w with
+    | I8 -> "i8"
+    | I16 -> "i16"
     | I32 -> "i32"
-    | _ -> failwith "not supported int width currently")
+    | I64 -> "i64"
+    | I128 -> "i128" )
+;;
 
-let rec string_of_typ (t: 'a typ) : string =
+let rec string_of_typ (t : 'a typ) : string =
   match t with
-  | TyVar(name, _) -> name
-  | TyCon(tykind, _) -> string_of_tykind tykind
-  | TyArrow(ty_lst, ret_ty, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_typ ty_lst) ^ ") -> " ^ (string_of_typ ret_ty)
-  | TyBlank _ -> ""
-  | TyApp(generic_ty, generic_param_ty_lst, _) ->
-      (string_of_typ generic_ty) ^ 
-      "<" ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst) ^ ">"
-  | TyPath(path, _) ->
-    ExtString.String.join "::" path
+  | TyVar name -> name
+  | TyCon tykind -> string_of_tykind tykind
+  | TyArrow (ty_lst, ret_ty) ->
+      "("
+      ^ ExtString.String.join ", " (List.map string_of_typ ty_lst)
+      ^ ") -> "
+      ^ string_of_typ ret_ty
+  | TyBlank _ -> "blank"
+  | TyApp (generic_ty, generic_param_ty_lst) ->
+      string_of_typ generic_ty
+      ^ "<"
+      ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst)
+      ^ ">"
+  | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
+;;
 
 let rec string_of_bind (b : 'a bind) : string =
   match b with
@@ -101,18 +112,33 @@ let rec string_of_bind (b : 'a bind) : string =
           "shadow "
         else
           "" )
-      ^ name ^ ":" ^ (string_of_typ typ)
-  (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
+      ^ name
+      ^ ":"
+      ^ string_of_typ typ
+;;
+
+(* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
+
+let string_of_pred pred =
+  sprintf "%s<%s>" pred.pred_class
+    (ExtString.String.join ", " (List.map string_of_typ pred.pred_args))
 ;;
 
 let rec string_of_generic_bind (b : 'a generic_bind) : string =
   match b with
-  | GBName (name, tag) ->
-    name
+  | GBName (name, bounds, tag) ->
+      let colon =
+        if List.length bounds > 0 then
+          ":"
+        else
+          ""
+      in
+      name ^ colon ^ ExtString.String.join "+" (List.map string_of_pred bounds)
+;;
 
 let string_of_call_type ct =
   match ct with
-  | Extern(lang) -> sprintf "*'%s'" lang
+  | Extern lang -> sprintf "*'%s'" lang
   | FictolFunc -> ""
   | FictolClosure -> "#"
   | Unknown -> "?"
@@ -140,8 +166,8 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ENumber (n, a) -> Int64.to_string n ^ print_a a
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a *)
-    | ELiteral(LitInt(n, suff), a) -> Uint128.to_string n ^ print_a a
-    | ELiteral(LitBool(b), a) -> string_of_bool b ^ print_a a
+    | ELiteral (LitInt (n, suff), a) -> Uint128.to_string n ^ print_a a
+    | ELiteral (LitBool b, a) -> string_of_bool b ^ print_a a
     | EId (x, a) -> x ^ print_a a
     | EPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_expr e) (print_a a)
     | EPrim2 (op, left, right, a) ->
@@ -158,7 +184,10 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         sprintf "(%s%s(%s))%s" (string_of_call_type call_type) (string_of_expr func)
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
-    (* | ELetRec (binds, body, a) ->
+    | ETyApp (e, typs, a) -> string_of_expr e
+;;
+
+(* | ELetRec (binds, body, a) ->
         let binds_strs = List.map (string_of_binding_with (depth - 1) print_a) binds in
         let binds_str = List.fold_left ( ^ ) "" (intersperse binds_strs ", ") in
         sprintf "(let-rec %s in %s)%s" binds_str (string_of_expr body) (print_a a)
@@ -176,20 +205,70 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
     | EString (s, a) -> sprintf "\"%s\"%s" s (print_a a) *)
-;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
 
-let rec string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
+let string_of_func_sig_with depth print_a name generics args (body : 'a expr option) call_type typ a
+    =
+  sprintf "(def %s%s(%s)%s%s)%s" name
+    (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
+     if List.length generics > 0 then
+       "<" ^ gens ^ ">"
+     else
+       gens )
+    (ExtString.String.join ", " (List.map string_of_bind args))
+    (let typ_str = string_of_typ typ in
+     if String.length typ_str <= 0 then
+       ""
+     else
+       " -> " ^ typ_str )
+    ( match body with
+    | Some body -> ":\n  " ^ string_of_expr_with (depth - 1) print_a body
+    | None -> ";" )
+    (print_a a)
+;;
+
+let rec string_of_impl_decl_with depth print_a impl_d =
+  match impl_d with
+  | ImplDecl decl -> string_of_decl_with depth print_a decl
+  | ImplPrim1 op -> string_of_op1 op
+  | ImplPrim2 op -> string_of_op2 op
+
+and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
   | DFun (name, generics, args, body, call_type, typ, a) ->
-      sprintf "(def %s%s(%s)%s:\n  %s)%s" name
-        (let gens = (ExtString.String.join ", " (List.map string_of_generic_bind generics)) in
-        if List.length generics > 0 then "<" ^ gens ^ ">" else gens)
-        (ExtString.String.join ", " (List.map string_of_bind args))
-        (let typ_str = (string_of_typ typ) in
-        if (String.length typ_str) <= 0 then "" else " -> " ^ typ_str)
-        (string_of_expr_with (depth - 1) print_a body)
+      string_of_func_sig_with depth print_a name generics args (Some body) call_type typ a
+  | DClass (name, params, superclasses, method_sigs, a) ->
+      sprintf "(typeclass %s%s%s:\n  %s)%s" name
+        (let gens = ExtString.String.join ", " params in
+         if List.length params > 0 then
+           "<" ^ gens ^ ">"
+         else
+           gens )
+        (let superclasses_str =
+           ExtString.String.join " + " (List.map string_of_pred superclasses)
+         in
+         if List.length superclasses > 0 then
+           " extends " ^ superclasses_str
+         else
+           "" )
+        (ExtString.String.join "\n  "
+           (List.map
+              (fun ms ->
+                string_of_func_sig_with depth print_a ms.ms_name ms.ms_generics ms.ms_args
+                  ms.ms_default FictolFunc ms.ms_ret ms.ms_span )
+              method_sigs ) )
+        (print_a a)
+  | DInstance (generics, head, method_impls, a) ->
+      sprintf "(instance%s %s:\n  %s)%s"
+        (let gens = ExtString.String.join ", " (List.map string_of_generic_bind generics) in
+         if List.length generics > 0 then
+           "<" ^ gens ^ ">"
+         else
+           gens )
+        (string_of_pred head)
+        (ExtString.String.join "\n  "
+           (List.map (string_of_impl_decl_with depth print_a) method_impls) )
         (print_a a)
 ;;
 

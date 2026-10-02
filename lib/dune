@@ -1,12 +1,12 @@
 (library
  (name fictol)
- (libraries 
-  llvm 
-  llvm.analysis 
-  llvm.bitwriter 
-  llvm.target 
-  llvm.executionengine 
-  stdint 
+ (libraries
+  llvm
+  llvm.analysis
+  llvm.bitwriter
+  llvm.target
+  llvm.executionengine
+  stdint
   ounit2
   extlib))
 
@@ -14,4 +14,4 @@
  (modules lexer))
 
 (ocamlyacc
-  (modules parser))
+ (modules parser))

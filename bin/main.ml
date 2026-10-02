@@ -16,12 +16,11 @@ let no_imports = ref false
 
 let () =
   let speclist =
-    [ 
-      (* ("-t", Arg.Set show_trace, "Display the trace of compilation");
-      ("-no-builtins", Arg.Set no_builtins, "Leave out all built-in functions");
+    [ ("-t", Arg.Set show_trace, "Display the trace of compilation")
+      (* ("-no-builtins", Arg.Set no_builtins, "Leave out all built-in functions");
       ("-no-imports", Arg.Set no_imports, "Leave out all built-in functions");
       ("-d", Arg.Set show_debug_print, "Enable debug printing") *)
-       ]
+    ]
   in
   Arg.parse speclist
     (fun name ->
@@ -32,14 +31,14 @@ let () =
         filename := name
       ) )
     "Compiler options:";
-  (* let sep = "\n=================\n" in *)
+  let sep = "\n=================\n" in
   match compile_file_to_string !filename !filename with
   | Error (errs, trace) ->
       eprintf "Errors:\n";
       eprintf "%s\n" (ExtString.String.join "\n" (print_errors errs))
   | Ok (program, trace) ->
-      (* if !show_trace then
+      if !show_trace then
         printf "%s\n" (ExtString.String.join sep (print_trace trace))
-      else *)
-      printf "%s\n" program
+      else
+        printf "%s\n" program
 ;;

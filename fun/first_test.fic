@@ -4,10 +4,27 @@
 # def test_parse2<T, U>(a: T, b: U) -> i32:
 #     a == b
 
+# typeclass Add<T>:
+#     def add(T, T) -> T
+
+# instance Add<i32>:
+#     def add(self: i32, other: i32) -> i32:
+#         self + other
+
 def identity<T>(x: T) -> T:
     x
 
+def gen_eq<T: Eq<T>>(a: T, b: T) -> bool:
+    let x = a == b in x
+
+def gen_add<T: Add<T>>(a: T, b: T) -> T:
+    a + b
+
 def main() -> i32:
+    identity(gen_eq(5, 7));
+    gen_add(5, 6);
     identity(5);
     identity(7);
-    identity(true)
+    identity(true);
+    let x = identity(true) in
+    x; 0
