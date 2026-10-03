@@ -267,8 +267,9 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       (List.map (fun cls -> (cls, int_types)) built_in_classes)
     |> List.concat
   in
+  let eq_bool_instance = inst_prim_for_typ eq_class bool_type in
   match p with
-  | Program (decls, loc) -> Program (built_in_classes @ instances @ decls, loc)
+  | Program (decls, loc) -> Program (built_in_classes @ instances @ [eq_bool_instance] @ decls, loc)
 ;;
 
 let wf_class_decl (d : sourcespan decl) : exn list = []
