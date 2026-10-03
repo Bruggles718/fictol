@@ -283,3 +283,80 @@ let string_of_program_with (depth : int) (print_a : 'a -> string) (p : 'a progra
 ;;
 
 let string_of_program (p : 'a program) : string = string_of_program_with 1000 (fun _ -> "") p
+
+let rec string_of_aexpr_with (depth : int) (print_a : 'a -> string) (e : 'a aexpr) : string =
+  let string_of_aexpr = string_of_aexpr_with (depth - 1) print_a in
+  let string_of_cexpr = string_of_cexpr_with (depth - 1) print_a in
+  if depth <= 0 then
+    "..."
+  else
+    match e with
+    | ASeq (e1, e2, a) ->
+        sprintf "(%s ; %s)%s" (string_of_cexpr e1) (string_of_aexpr e2) (print_a a)
+    | ALet (x, e, b, a) ->
+        sprintf "(alet %s = %s in %s)%s" x (string_of_cexpr e) (string_of_aexpr b) (print_a a)
+    | ACExpr c -> string_of_cexpr c
+
+and string_of_adecl_with depth print_a decl =
+  match decl with
+  | AFun (name, args, body, call_type, ret_typ, a) ->
+      let binds =
+        List.map
+          (fun (name, a) -> BName (name, false, TyBlank (Lexing.dummy_pos, Lexing.dummy_pos), a))
+          args
+      in
+      sprintf "(def %s(%s)%s:\n  %s)%s" name
+        (ExtString.String.join ", " (List.map string_of_bind binds))
+        (let typ_str = string_of_typ ret_typ in
+         if String.length typ_str <= 0 then
+           ""
+         else
+           " -> " ^ typ_str )
+        (string_of_aexpr_with (depth - 1) print_a body)
+        (print_a a)
+
+and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) : string =
+  let string_of_aexpr = string_of_aexpr_with (depth - 1) print_a in
+  let string_of_immexpr = string_of_immexpr_with print_a in
+  if depth <= 0 then
+    "..."
+  else
+    match c with
+    | CPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_immexpr e) (print_a a)
+    | CPrim2 (op, left, right, a) ->
+        sprintf "(%s %s %s)%s" (string_of_immexpr left) (string_of_op2 op) (string_of_immexpr right)
+          (print_a a)
+    | CIf (cond, thn, els, a) ->
+        sprintf "(if %s: %s else: %s)%s" (string_of_immexpr cond) (string_of_aexpr thn)
+          (string_of_aexpr els) (print_a a)
+    | CApp (func, args, call_type, a) ->
+        sprintf "(%s%s(%s))%s" (string_of_call_type call_type) (string_of_immexpr func)
+          (ExtString.String.join ", " (List.map string_of_immexpr args))
+          (print_a a)
+    | CImmExpr i -> string_of_immexpr i
+
+and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
+  match i with
+  | ImmLiteral (LitInt (n, suff), a) -> Uint128.to_string n ^ print_a a
+  | ImmLiteral (LitBool b, a) -> string_of_bool b ^ print_a a
+  | ImmId (x, a) -> x ^ print_a a
+
+and string_of_aprogram_with (depth : int) (print_a : 'a -> string) (p : 'a aprogram) : string =
+  match p with
+  | AProgram (decls, a) ->
+      ExtString.String.join "\n" (List.map (string_of_adecl_with depth print_a) decls) ^ print_a a
+;;
+
+let string_of_aexpr ?(depth = 100) (e : 'a aexpr) : string =
+  string_of_aexpr_with depth (fun _ -> "") e
+;;
+
+let string_of_cexpr ?(depth = 100) (c : 'a cexpr) : string =
+  string_of_cexpr_with depth (fun _ -> "") c
+;;
+
+let string_of_immexpr (i : 'a immexpr) : string = string_of_immexpr_with (fun _ -> "") i
+
+let string_of_aprogram ?(depth = 100) (p : 'a aprogram) : string =
+  string_of_aprogram_with depth (fun _ -> "") p
+;;

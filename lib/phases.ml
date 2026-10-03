@@ -26,13 +26,13 @@ type phase =
   | Parsed of sourcespan program
   | WellFormed of sourcespan program
   | TypeChecked of typed_tag program
-  | Renamed of tag program
+  | Renamed of (tag * typ) program
   | Desugared of sourcespan program
   | TypeNamesResolved of sourcespan program
   | Monomorphized of typed_tag program
   (* | AddedNatives of sourcespan program *)
-  (* | Tagged of tag program
-  | ANFed of tag aprogram *)
+  | Tagged of (tag * typ) program
+  | ANFed of (tag * typ) aprogram
   | Result of string
 
 (* These functions simply apply a phase constructor, because OCaml
@@ -55,9 +55,9 @@ let renamed p = Renamed p
 
 let desugared p = Desugared p
 
-(* let tagged p = Tagged p
+let tagged p = Tagged p
 
-let anfed p = ANFed p *)
+let anfed p = ANFed p
 
 (* let add_natives p = AddedNatives p *)
 
@@ -136,10 +136,10 @@ let print_trace (trace : phase list) : string list =
     | TypeChecked _ -> "Type-checked"
     | TypeNamesResolved _ -> "Type-names-resolved"
     | Monomorphized _ -> "Monomorphized"
-    (* | AddedNatives _ -> "Natives Added"
+    (* | AddedNatives _ -> "Natives Added" *)
     | Tagged _ -> "Tagged"
     | ANFed _ -> "ANF'ed"
-    | Located _ -> "Located" *)
+    (* | Located _ -> "Located" *)
     | Result _ -> "Result"
     (* | Preprocessed _ -> "Preprocessed" *)
   in
@@ -152,11 +152,14 @@ let print_trace (trace : phase list) : string list =
     | Desugared p -> string_of_program p
     | TypeChecked p -> string_of_program p
     | TypeNamesResolved p -> string_of_program p
-    | Monomorphized p -> string_of_program p
-    (* | AddedNatives p -> string_of_program p
-    | Tagged p -> string_of_program_with 1000 (fun tag -> sprintf "@%d" tag) p
-    | ANFed p -> string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
-    | Located (p, e) ->
+    | Monomorphized p ->
+        string_of_program_with 1000 (fun (tag, typ) -> sprintf "#%s" (string_of_typ typ)) p
+    | Tagged p ->
+        string_of_program_with 1000 (fun (tag, typ) -> sprintf "@%s" (string_of_int tag)) p
+    (* | AddedNatives p -> string_of_program p *)
+    (* | Tagged p -> string_of_program_with 1000 (fun tag -> sprintf "@%d" tag) p *)
+    | ANFed p -> string_of_aprogram_with 1000 (fun _ -> "") p
+    (* | Located (p, e) ->
         string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
         ^ "\nEnvs:\n"
         ^ ExtString.String.join "\n"

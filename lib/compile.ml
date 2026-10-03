@@ -707,8 +707,8 @@ and apply_subst_subst (sub1 : typ subst) (sub2 : typ subst) : typ subst =
 and apply_subst_pred (subst : typ subst) (p : 'a predicate) : 'a predicate =
   {p with pred_args= List.map (apply_subst_typ subst) p.pred_args}
 
-and apply_subst_predicates (subst : typ subst) (predicates : 'a predicate list) :
-    'a predicate list =
+and apply_subst_predicates (subst : typ subst) (predicates : 'a predicate list) : 'a predicate list
+    =
   List.map (apply_subst_pred subst) predicates
 ;;
 
@@ -1314,8 +1314,7 @@ let match_pred (pat_vars : StringSet.t) (pat : 'a predicate) (target : 'a predic
 (* Same class name, same arity, then fold match_typ over the argument pairs,
    threading the accumulator so repeated variables stay consistent. *)
 
-let find_instance (p : sourcespan predicate) :
-    (sourcespan instance_info * typ subst) option =
+let find_instance (p : sourcespan predicate) : (sourcespan instance_info * typ subst) option =
   let all_instances = Hashtbl.find instance_table p.pred_class in
   let rec helper instances =
     match instances with
@@ -1578,8 +1577,7 @@ let tag_of_expr (e : 'a expr) : 'a =
    |ELiteral (_, t)
    |EId (_, t)
    |EApp (_, _, _, t)
-   |ETyApp (_, _, t) ->
-      t
+   |ETyApp (_, _, t) -> t
 ;;
 
 let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
@@ -1798,7 +1796,10 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
       let final_subst = compose_subst (compose_subst subst_so_far unif_subst1) unif_subst2 in
       let final_typ = apply_subst_typ final_subst t_typ in
       let all_constraints = apply_subst_wanteds final_subst (c_cs @ t_cs @ f_cs) in
-      (final_subst, final_typ, all_constraints, EIf (new_cond, new_true, new_false, (loc, final_typ)))
+      ( final_subst,
+        final_typ,
+        all_constraints,
+        EIf (new_cond, new_true, new_false, (loc, final_typ)) )
   | ELet (binds, body, let_loc) ->
       let new_env, new_subst, bind_cs, new_bindings =
         List.fold_left
@@ -1821,8 +1822,8 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
                 ( StringMap.add name (SForall ([], [], b_typ)) new_env,
                   final_subst,
                   acc_cs @ b_cs,
-                  acc_bindings
-                  @ [(BName (name, shadow, b_typ, (loc, b_typ)), new_e, (bloc, b_typ))] )
+                  acc_bindings @ [(BName (name, shadow, b_typ, (loc, b_typ)), new_e, (bloc, b_typ))]
+                )
             | x ->
                 ( new_env,
                   subst_so_far,
@@ -2123,10 +2124,8 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
      method generics), so plain concatenation is already the composition you
      want; compose_subst is only needed when an image mentions variables from
      the other substitution's domain. *)
-  let resolved_decl
-      (decl : typed_tag decl)
-      (method_args : typ list)
-      (subst : typ subst) : mono_resolution =
+  let resolved_decl (decl : typed_tag decl) (method_args : typ list) (subst : typ subst) :
+      mono_resolution =
     match decl with
     | DFun (name, generic_binds, _, _, _, _, _) ->
         let names = List.map name_of_generic_bind generic_binds in
@@ -2215,8 +2214,8 @@ let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag exp
           | TyVar _ ->
               raise
                 (InternalCompilerError
-                   (sprintf "Found TyVar in monomorphize_expr at <%s>" (string_of_sourcespan (fst loc)))
-                )
+                   (sprintf "Found TyVar in monomorphize_expr at <%s>"
+                      (string_of_sourcespan (fst loc)) ) )
           | _ -> () )
         tys;
       let args = List.map (monomorphize_expr st) args in
@@ -2242,7 +2241,7 @@ let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag exp
             ();
           EApp (EId (new_name, id_loc), args, call_type, loc) )
   | EApp (closure, args, call_type, loc) ->
-    EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, call_type, loc)
+      EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, call_type, loc)
   | ELet (bindings, body, loc) ->
       let new_bindings =
         List.map (fun (x, b, binding_loc) -> (x, monomorphize_expr st b, binding_loc)) bindings
@@ -2354,7 +2353,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
           | DFun (name, generics, args, body, call_type, ret_typ, loc) ->
               let body' = monomorphize_expr st body in
               st.emitted <-
-                (DFun (name, generics, args, body', call_type, ret_typ, loc)) :: st.emitted
+                DFun (name, generics, args, body', call_type, ret_typ, loc) :: st.emitted
           | _ -> failwith "Monomorphize failure: specialization was not a DFun"
         end
       done;
@@ -2398,6 +2397,237 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
      |> add_phase result compile_prog
 *)
 
+let tag_prog (p : 'a program) : (tag * typ) program =
+  let next = ref 0 in
+  let tag (span, typ) =
+    next := !next + 1;
+    (!next, typ)
+  in
+  map_tags_program tag p
+;;
+
+let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
+  let rec rename env p =
+    match p with
+    | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
+  and helpD env decl =
+    match decl with
+    | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
+        let newArgs, env' = helpBS env args in
+        DFun (name, [], newArgs, helpE env' body, call_type, ret_typ, (tag, typ))
+    | _ -> failwith "Rename and tag: Found non DFun after monomorphization?? Is that allowed?? Idk"
+  and helpB env b =
+    match b with
+    | BBlank _ -> (b, env)
+    | BName (name, allow_shadow, b_typ, (tag, typ)) ->
+        let name' = sprintf "%s_%d" name tag in
+        (BName (name', allow_shadow, b_typ, (tag, typ)), (name, name') :: env)
+  and helpBS env (bs : (tag * typ) bind list) =
+    match bs with
+    | [] -> ([], env)
+    | b :: bs ->
+        let b', env' = helpB env b in
+        let bs', env'' = helpBS env' bs in
+        (b' :: bs', env'')
+  and helpBG env (bindings : (tag * typ) binding list) =
+    match bindings with
+    | [] -> ([], env)
+    | (b, e, a) :: bindings ->
+        let b', env' = helpB env b in
+        let e' = helpE env e in
+        let bindings', env'' = helpBG env' bindings in
+        ((b', e', a) :: bindings', env'')
+  and helpE env e =
+    match e with
+    | ESeq (e1, e2, tag) -> ESeq (helpE env e1, helpE env e2, tag)
+    | EPrim1 (op, arg, tag) -> EPrim1 (op, helpE env arg, tag)
+    | EPrim2 (op, left, right, tag) -> EPrim2 (op, helpE env left, helpE env right, tag)
+    | EIf (c, t, f, tag) -> EIf (helpE env c, helpE env t, helpE env f, tag)
+    | ELiteral _ -> e
+    | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
+    | EApp (func, args, call_type, tag) ->
+        (* Figure out a way to determine call type. 
+      Maybe build a global env of externs, and a global env of top level functions,
+      and if its not in either then it's extern?
+      But that doesn't work because how do I know what func is?
+      maybe i have to resolve it later...
+      WAIT! I can check the type of the expr func and determine if it's a closure or a regular arrow type.
+      That tells me if it's a function or a closure. If arrow type, check a global extern env. If not found,
+      FictolFunc. If found, extern of that type.
+      WAIT AGAIN! This doesn't work because I don't have a name to look up in the env. func could be anything.
+      Can I rely on well-formedness to prove any invariants? 
+      Should the call type be encoded in the arrow type?
+      
+      OK heres what to do:
+      after rename and ANF, each func will have a unique id and be called from that unique id, and I can
+      know the call type from that. I'm not sure how this will work across function boundaries though.
+      maybe don't have raw function pointers at all, only allow passing around explicit closures?*)
+        let func = helpE env func in
+        EApp (func, List.map (helpE env) args, call_type, tag)
+    | ELet (binds, body, tag) ->
+        let binds', env' = helpBG env binds in
+        let body' = helpE env' body in
+        ELet (binds', body', tag)
+    | _ -> failwith "Rename and tag: unsupported expr"
+  in
+  rename [] p
+;;
+
+type 'a anf_bind =
+  | BSeq of 'a cexpr * typ
+  | BLet of string * typ * 'a cexpr
+
+let anf (p : (tag * typ) program) : typ aprogram =
+  let rec helpP (p : (tag * typ) program) : typ aprogram =
+    match p with
+    | Program (decls, (tag, typ)) -> AProgram (List.map helpD decls, typ)
+  and helpD d =
+    match d with
+    | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
+        let new_args =
+          List.map
+            (fun arg ->
+              match arg with
+              | BName (b_name, _, b_typ, _) -> (b_name, b_typ)
+              | _ -> failwith "anf: unsupported binding" )
+            args
+        in
+        AFun (name, new_args, helpA body, call_type, ret_typ, typ)
+    | _ -> failwith "anf: invalid decl"
+  and helpC (e : (tag * typ) expr) : typ cexpr * typ anf_bind list =
+    match e with
+    | EPrim1 (op, arg, (tag, typ)) ->
+        let arg_imm, arg_setup = helpI arg in
+        (CPrim1 (op, arg_imm, typ), arg_setup)
+    | EPrim2 (op, left, right, (tag, typ)) ->
+        let left_imm, left_setup = helpI left in
+        let right_imm, right_setup = helpI right in
+        (CPrim2 (op, left_imm, right_imm, typ), left_setup @ right_setup)
+    | EIf (cond, _then, _else, (tag, typ)) ->
+        let cond_imm, cond_setup = helpI cond in
+        (CIf (cond_imm, helpA _then, helpA _else, typ), cond_setup)
+    | ELet ([], body, _) -> helpC body
+    | ELet ((BBlank _, exp, (tag, typ)) :: rest, body, pos) ->
+        let exp_ans, exp_setup = helpC exp in
+        let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
+        (body_ans, exp_setup @ [BSeq (exp_ans, typ)] @ body_setup)
+    | ELet ((BName (bind, _, typ, _), exp, _) :: rest, body, pos) ->
+        let exp_ans, exp_setup = helpC exp in
+        let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
+        (body_ans, exp_setup @ [BLet (bind, typ, exp_ans)] @ body_setup)
+    (* | ELet ((BTuple _, _, _) :: _, _, _) ->
+        raise (InternalCompilerError "Tuple bindings should have been desugared away") *)
+    | EApp (func, args, native, (tag, typ)) ->
+        let func_ans, func_setup = helpI func in
+        let new_args, new_setup = List.split (List.map helpI args) in
+        (CApp (func_ans, new_args, native, typ), func_setup @ List.concat new_setup)
+    | ESeq (e1, e2, (tag, typ)) ->
+        let e1_ans, e1_setup = helpC e1 in
+        let e2_ans, e2_setup = helpC e2 in
+        (e2_ans, e1_setup @ [BSeq (e1_ans, typ)] @ e2_setup)
+    | _ ->
+        let imm, setup = helpI e in
+        (CImmExpr imm, setup)
+  and helpI (e : (tag * typ) expr) : typ immexpr * typ anf_bind list =
+    match e with
+    | ELiteral (LitInt (n, suffix), (tag, typ)) -> (ImmLiteral (LitInt (n, suffix), typ), [])
+    | ELiteral (LitBool bool_value, (tag, typ)) -> (ImmLiteral (LitBool bool_value, typ), [])
+    | EId (name, (tag, typ)) -> (ImmId (name, typ), [])
+    | ESeq (e1, e2, _) ->
+        let _, e1_setup = helpI e1 in
+        let e2_imm, e2_setup = helpI e2 in
+        (e2_imm, e1_setup @ e2_setup)
+    | EPrim1 (op, arg, (tag, typ)) ->
+        let tmp = sprintf "unary_%d" tag in
+        let arg_imm, arg_setup = helpI arg in
+        (ImmId (tmp, typ), arg_setup @ [BLet (tmp, typ, CPrim1 (op, arg_imm, typ))])
+    | EPrim2 (op, left, right, (tag, typ)) ->
+        let tmp = sprintf "binop_%d" tag in
+        let left_imm, left_setup = helpI left in
+        let right_imm, right_setup = helpI right in
+        ( ImmId (tmp, typ),
+          left_setup @ right_setup @ [BLet (tmp, typ, CPrim2 (op, left_imm, right_imm, typ))] )
+    | EIf (cond, _then, _else, (tag, typ)) ->
+        let tmp = sprintf "if_%d" tag in
+        let cond_imm, cond_setup = helpI cond in
+        ( ImmId (tmp, typ),
+          cond_setup @ [BLet (tmp, typ, CIf (cond_imm, helpA _then, helpA _else, typ))] )
+    | EApp (func, args, native, (tag, typ)) ->
+        let tmp = sprintf "app_%d" tag in
+        let new_func, func_setup = helpI func in
+        let new_args, new_setup = List.split (List.map helpI args) in
+        ( ImmId (tmp, typ),
+          func_setup
+          @ List.concat new_setup
+          @ [BLet (tmp, typ, CApp (new_func, new_args, native, typ))] )
+    | ELet ([], body, _) -> helpI body
+    | ELet ((BBlank _, exp, (tag, typ)) :: rest, body, pos) ->
+        let exp_ans, exp_setup = helpC exp in
+        let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
+        (body_ans, exp_setup @ [BSeq (exp_ans, typ)] @ body_setup)
+    | ELet ((BName (bind, _, typ, _), exp, _) :: rest, body, pos) ->
+        let exp_ans, exp_setup = helpC exp in
+        let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
+        (body_ans, exp_setup @ [BLet (bind, typ, exp_ans)] @ body_setup)
+    | _ -> failwith "anf: unsupported expr"
+  and helpA e : typ aexpr =
+    let ans, ans_setup = helpC e in
+    List.fold_right
+      (fun bind body ->
+        match bind with
+        | BSeq (exp, typ) -> ASeq (exp, body, typ)
+        | BLet (name, typ, exp) -> ALet (name, exp, body, typ) )
+      ans_setup (ACExpr ans)
+  in
+  helpP p
+;;
+
+let map_tags_immexpr (f : 'a -> 'b) (e : 'a immexpr) : 'b immexpr =
+  match e with
+  | ImmLiteral (lit, tag) -> ImmLiteral (lit, f tag)
+  | ImmId (name, tag) -> ImmId (name, f tag)
+;;
+
+let map_tags_abind (f : 'a -> 'b) ((name, tag) : 'a abind) : 'b abind = (name, f tag)
+
+let rec map_tags_cexpr (f : 'a -> 'b) (c : 'a cexpr) : 'b cexpr =
+  let imm = map_tags_immexpr f in
+  match c with
+  | CIf (cond, then_, else_, tag) ->
+      CIf (imm cond, map_tags_aexpr f then_, map_tags_aexpr f else_, f tag)
+  | CPrim1 (op, arg, tag) -> CPrim1 (op, imm arg, f tag)
+  | CPrim2 (op, left, right, tag) -> CPrim2 (op, imm left, imm right, f tag)
+  | CApp (fn, args, call_type, tag) -> CApp (imm fn, List.map imm args, call_type, f tag)
+  | CImmExpr e -> CImmExpr (imm e)
+
+and map_tags_aexpr (f : 'a -> 'b) (a : 'a aexpr) : 'b aexpr =
+  match a with
+  | ASeq (first, rest, tag) -> ASeq (map_tags_cexpr f first, map_tags_aexpr f rest, f tag)
+  | ALet (name, bound, body, tag) ->
+      ALet (name, map_tags_cexpr f bound, map_tags_aexpr f body, f tag)
+  | ACExpr c -> ACExpr (map_tags_cexpr f c)
+;;
+
+let map_tags_adecl (f : 'a -> 'b) (d : 'a adecl) : 'b adecl =
+  match d with
+  | AFun (name, args, body, call_type, ret_typ, tag) ->
+      AFun (name, List.map (map_tags_abind f) args, map_tags_aexpr f body, call_type, ret_typ, f tag)
+;;
+
+let map_tags_aprogram (f : 'a -> 'b) (p : 'a aprogram) : 'b aprogram =
+  match p with
+  | AProgram (decls, tag) -> AProgram (List.map (map_tags_adecl f) decls, f tag)
+;;
+
+let atag_prog p =
+  let next = ref 0 in
+  let tag typ =
+    next := !next + 1;
+    (!next, typ)
+  in
+  map_tags_aprogram tag p
+;;
+
 let run_if should_run f =
   if should_run then
     f
@@ -2405,8 +2635,7 @@ let run_if should_run f =
     no_op_phase
 ;;
 
-let compile_prog (prog : typed_tag program) : string =
-  sprintf "%s" (string_of_program_with 1000 (fun (loc, typ) -> (sprintf "#(%s)" (string_of_typ typ))) prog)
+let compile_prog (prog : (tag * typ) aprogram) : string = ""
 
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog
@@ -2418,6 +2647,9 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
      |> add_phase monomorphized monomorphize   (* new phase name in Phases *) *)
   |> add_err_phase type_checked type_synth_tc
   |> add_phase monomorphized monomorphize
+  |> add_phase tagged tag_prog
+  |> add_phase renamed rename_and_tag
+  |> add_phase anfed (fun p -> atag_prog (anf p))
   |> add_phase result compile_prog
 ;;
 (* prog *)

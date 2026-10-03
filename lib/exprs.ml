@@ -85,12 +85,13 @@ and 'a method_impl =
 
 type 'a program = Program of 'a decl list * 'a
 
-(* type 'a immexpr =
+type 'a immexpr =
   (* immediate expressions *)
-  | ImmInt32 of int32 * 'a
-  | ImmBool of bool * 'a
+  | ImmLiteral of lit * 'a
   | ImmId of string * 'a
-  (* | ImmNil of 'a *)
+(* | ImmNil of 'a *)
+
+and 'a abind = string * 'a
 
 and 'a cexpr =
   (* compound expressions *)
@@ -98,8 +99,9 @@ and 'a cexpr =
   | CPrim1 of prim1 * 'a immexpr * 'a
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
   | CApp of 'a immexpr * 'a immexpr list * call_type * 'a
-  | CImmExpr of 'a immexpr (* for when you just need an immediate value *)
-  (* | CTuple of 'a immexpr list * 'a
+  | CImmExpr of 'a immexpr
+(* for when you just need an immediate value *)
+(* | CTuple of 'a immexpr list * 'a
   | CGetItem of 'a immexpr * 'a immexpr * 'a
   | CSetItem of 'a immexpr * 'a immexpr * 'a immexpr * 'a
   | CLambda of string list * 'a aexpr * 'a *)
@@ -111,7 +113,6 @@ and 'a aexpr =
   (* | ALetRec of (string * 'a cexpr) list * 'a aexpr * 'a *)
   | ACExpr of 'a cexpr
 
-and 'a adecl =
-  | AFun of string * 'a bind list * 'a aexpr * 'a *)
+and 'a adecl = AFun of string * 'a abind list * 'a aexpr * call_type * typ * 'a
 
-(* and 'a aprogram = AProgram of 'a adecl list * 'a *)
+and 'a aprogram = AProgram of 'a adecl list * 'a
