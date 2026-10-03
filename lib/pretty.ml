@@ -302,11 +302,11 @@ and string_of_adecl_with depth print_a decl =
   | AFun (name, args, body, call_type, ret_typ, a) ->
       let binds =
         List.map
-          (fun (name, a) -> BName (name, false, TyBlank (Lexing.dummy_pos, Lexing.dummy_pos), a))
+          (fun (b_name, b_a) -> (sprintf "%s%s" b_name (print_a b_a)))
           args
       in
       sprintf "(def %s(%s)%s:\n  %s)%s" name
-        (ExtString.String.join ", " (List.map string_of_bind binds))
+        (ExtString.String.join ", " binds)
         (let typ_str = string_of_typ ret_typ in
          if String.length typ_str <= 0 then
            ""
