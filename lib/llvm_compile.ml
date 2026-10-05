@@ -106,22 +106,22 @@ and compile_aexpr context builder env (e : 'a aexpr) llvm_fun : llvalue =
 and compile_cexpr context builder env (c : 'a cexpr) llvm_fun : llvalue =
   match c with
   | CImmExpr imm -> compile_immexpr context env imm
-  | CPrim2 (op, left, right, (_, typ)) ->
+  | CPrim2 (op, left, right, (tag, typ)) ->
       let l = compile_immexpr context env left in
       let r = compile_immexpr context env right in
       let _, ltyp = tag_of_immexpr left in
       let _, rtyp = tag_of_immexpr right in
-      (prim2_to_llvm_op op ltyp rtyp) l r (gensym_compile "cprim2") builder
-  | CPrim1 (op, body, (_, typ)) ->
+      (prim2_to_llvm_op op ltyp rtyp) l r (sprintf "cprim2_%d" tag) builder
+  | CPrim1 (op, body, (tag, typ)) ->
       let b = compile_immexpr context env body in
-      (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
+      (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder
   | CApp (closure, args, _) ->
       let _, closure_typ = tag_of_immexpr closure in
       let call_type = call_type_of_arrow_typ closure_typ in
       compile_call context builder env closure args call_type
-  | CIf (cond, thn, els, _) ->
+  | CIf (cond, thn, els, (tag, _)) ->
       let cond_imm = compile_immexpr context env cond in
-      let if_name = gensym_compile "if" in
+      let if_name = (sprintf "if_%d" tag) in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
@@ -164,9 +164,9 @@ and compile_cexpr_tail context builder env (c : 'a cexpr) llvm_fun : unit =
       (* nothing may sit between the call and this ret *)
       let _ = build_ret call builder in
       ()
-  | CIf (cond, thn, els, _) ->
+  | CIf (cond, thn, els, (tag, _)) ->
       let cond_imm = compile_immexpr context env cond in
-      let if_name = gensym_compile "if" in
+      let if_name = (sprintf "if_%d" tag) in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let _ = build_cond_br cond_imm thn_bb els_bb builder in
@@ -186,7 +186,8 @@ and compile_call context builder env closure args call_type : llvalue =
   let llvm_args = Array.of_list (List.map (compile_immexpr context env) args) in
   (* the FUNCTION type, taken from the callee's own type so it matches its declaration *)
   let fn_type = typ_to_llvm_fn_type context (snd (tag_of_immexpr closure)) in
-  let call = build_call fn_type callee llvm_args (gensym_compile "app") builder in
+  let (tag, _) = tag_of_immexpr closure in
+  let call = build_call fn_type callee llvm_args (sprintf "app_%d" tag) builder in
   Llvm.set_instruction_call_conv (call_type_to_llvm_call_conv call_type) call;
   call
 
