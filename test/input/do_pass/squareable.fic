@@ -1,0 +1,16 @@
+typeclass Squareable<Self>:
+    def square(x: Self) -> Self
+
+instance<Self: Mul<Self>> Squareable<Self>:
+    def square(x: Self) -> Self:
+        x * x
+
+extern "C" def test_entry() -> i32:
+    square(5i8);
+    square(5i16);
+    square(5i64);
+    square(5u8);
+    square(5u16);
+    square(5u32);
+    square(5u64);
+    square(5)
