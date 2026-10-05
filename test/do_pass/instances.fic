@@ -1,16 +1,12 @@
 typeclass Equal<Self, Other>:
     def equal(a: Self, b: Other) -> bool
 
-# instance Equal<i32, bool>:
-#     def equal(a: i32, b: bool) -> bool:
-#         false
-
 instance<Self, Other> Equal<Self, Other>:
     def equal(a: Self, b: Other) -> bool:
         false
-
+        
 extern "C" def main() -> i32:
-    if equal(5, true):
+    if equal(true, false):
         0
     else:
         1
