@@ -18,6 +18,9 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %left PLUS MINUS TIMES DIVIDE GREATER LESSSPACE GREATEREQ LESSEQ EQEQ AND OR
 %left LPARENNOSPACE
 
+%nonassoc LOW
+%nonassoc ANDDEF
+
 
 %type <(Lexing.position * Lexing.position) Exprs.program> program
 
@@ -53,9 +56,9 @@ bindings :
   | bind EQUAL expr { [($1, $3, full_span())] }
   | bind EQUAL expr COMMA bindings { ($1, $3, tok_span(1, 3))::$5 }
 
-namebindings :
-  | namebind EQUAL expr { [($1, $3, full_span())] }
-  | namebind EQUAL expr COMMA namebindings { ($1, $3, tok_span(1, 3))::$5 }
+// namebindings :
+//   | namebind EQUAL expr { [($1, $3, full_span())] }
+//   | namebind EQUAL expr COMMA namebindings { ($1, $3, tok_span(1, 3))::$5 }
 
 expr :
   | LET bindings IN expr { ELet($2, $4, full_span()) }
@@ -196,7 +199,7 @@ decl :
   }
 
 method_impls :
-  | decl { [$1] }
+  | decl %prec LOW { [$1] }
   | decl ANDDEF method_impls { $1::$3 }
 
 extends_opt :
@@ -209,7 +212,7 @@ method_sig :
     }
 
 method_sigs :
-  | method_sig { [$1] }
+  | method_sig %prec LOW { [$1] }
   | method_sig ANDDEF method_sigs { $1::$3 }
 
 expr_opt :
@@ -274,7 +277,7 @@ namebind :
   | ID COLON typ_name %prec SEMI { BName($1, false, $3, full_span()) }
 
 decls :
-  | decl { [$1] }
+  | decl %prec LOW { [$1] }
   | decl decls { $1::$2 }
 
 program :
