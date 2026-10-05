@@ -17,7 +17,7 @@ let ignore_new_line lexbuf =
 }
 
 let dec_digit = ['0'-'9']
-let int_suffix = "i8" | "i16" | "i32" | "i64"
+let int_suffix = "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
 (* let signed_int = dec_digit+ | ('-' dec_digit+) *)
 let unsigned_int = dec_digit+
 

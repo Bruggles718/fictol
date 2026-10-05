@@ -34,7 +34,9 @@ and 'a bind =
 
 and 'a binding = 'a bind * 'a expr * 'a
 
-and int_suffix = IntSuffix of signed_int_width
+and int_suffix = 
+  | IntSuffix of signed_int_width
+  | UIntSuffix of unsigned_int_width
 
 and lit =
   | LitInt of uint64 * int_suffix

@@ -33,13 +33,17 @@ const :
       let (num, text_suff) = $1 in
       let suff = (
         match text_suff with
-        | "i8" -> I8
-        | "i16" -> I16
-        | "i32" | "" -> I32
-        | "i64" -> I64
+        | "i8" -> IntSuffix I8
+        | "i16" -> IntSuffix I16
+        | "i32" | "" -> IntSuffix I32
+        | "i64" -> IntSuffix I64
+        | "u8" -> UIntSuffix U8
+        | "u16" -> UIntSuffix U16
+        | "u32" -> UIntSuffix U32
+        | "u64" -> UIntSuffix U64
         | _ -> failwith "Unexpected suffix"
       ) in
-      ELiteral(LitInt(num, IntSuffix(suff)), full_span()) 
+      ELiteral(LitInt(num, suff), full_span()) 
     }
   | TRUE { ELiteral(LitBool(true), full_span()) }
   | FALSE { ELiteral(LitBool(false), full_span()) }

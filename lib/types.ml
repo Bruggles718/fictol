@@ -13,8 +13,15 @@ type signed_int_width =
   | I32
   | I64
 
+type unsigned_int_width =
+  | U8
+  | U16
+  | U32
+  | U64
+
 type tykind =
   | Int of signed_int_width
+  | UInt of unsigned_int_width
   | Bool
   | Skolem of string
 (* NEW. A rigid type constant standing for a generic parameter while that

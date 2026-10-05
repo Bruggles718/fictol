@@ -83,6 +83,12 @@ let rec string_of_tykind (t : tykind) =
     | I16 -> "i16"
     | I32 -> "i32"
     | I64 -> "i64" )
+  | UInt w -> (
+    match w with
+    | U8 -> "u8"
+    | U16 -> "u16"
+    | U32 -> "u32"
+    | U64 -> "u64" )
 ;;
 
 let rec string_of_typ (t : typ) : string =

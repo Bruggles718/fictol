@@ -170,7 +170,9 @@ let overloaded_prim2 (op : prim2) : (string * string) option =
 
 let add_builtins (p : sourcespan program) : sourcespan program =
   let widths = [I8; I16; I32; I64] in
+  let uwidths = [U8; U16; U32; U64] in
   let int_types = List.map (fun w -> TyCon (Int w)) widths in
+  let int_types = int_types @ (List.map (fun w -> TyCon (UInt w)) uwidths) in
   let bool_type = TyCon Bool in
   let self = TyVar "Self" in
   let params_self = ["Self"] in
@@ -518,6 +520,10 @@ let rec resolve_typ_path env (typ : typ) =
     | ["i16"] -> TyCon (Int I16)
     | ["i32"] -> TyCon (Int I32)
     | ["i64"] -> TyCon (Int I64)
+    | ["u8"] -> TyCon (UInt U8)
+    | ["u16"] -> TyCon (UInt U16)
+    | ["u32"] -> TyCon (UInt U32)
+    | ["u64"] -> TyCon (UInt U64)
     | ["bool"] -> TyCon Bool
     (* change to solve path eventually *)
     | [name] ->
@@ -830,23 +836,6 @@ let get_return_typ (typ : typ) =
    solving. Placed after instantiate_for_decl so gensym_typ is available.
    ===================================================================== *)
 
-(* REAL: Pretty.string_of_pred printed a typ and I can't see Pretty, so this
-   file defines its own (shadowing Pretty's). *)
-let rec show_typ (t : typ) : string =
-  match t with
-  | TyVar n -> n
-  | TyCon (Int I8) -> "i8"
-  | TyCon (Int I16) -> "i16"
-  | TyCon (Int I32) -> "i32"
-  | TyCon (Int I64) -> "i64"
-  | TyCon Bool -> "bool"
-  | TyCon (Skolem n) -> n
-  | TyArrow (args, ret, call_type) ->
-      sprintf "(%s) -> %s" (String.concat ", " (List.map show_typ args)) (show_typ ret)
-  | TyBlank _ -> "_"
-  | TyApp (f, args) -> sprintf "%s<%s>" (show_typ f) (String.concat ", " (List.map show_typ args))
-  | TyPath (path, _) -> String.concat "::" path
-;;
 
 (* let string_of_pred (p : 'a predicate) : string =
   String.concat " " (p.pred_class :: List.map show_typ p.pred_args)
@@ -1737,7 +1726,10 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     match suffix with
     | IntSuffix width ->
         let t = TyCon (Int width) in
-        ([], t, [], ELiteral (LitInt (n, suffix), (loc, t))) )
+        ([], t, [], ELiteral (LitInt (n, suffix), (loc, t)))
+    | UIntSuffix width ->
+       let t = TyCon (UInt width) in
+        ([], t, [], ELiteral (LitInt (n, suffix), (loc, t))))
   | EId (x, loc) ->
       let sub, preds, typ = instantiate_for_decl (StringMap.find x env) in
       let wanteds = List.map (wanted_from_pred loc) preds in
@@ -2598,6 +2590,10 @@ let typ_to_llvm_typ context typ =
     | Int I16 -> i16_type context
     | Int I32 -> i32_type context
     | Int I64 -> i64_type context
+    | UInt U8 -> i8_type context
+    | UInt U16 -> i16_type context
+    | UInt U32 -> i32_type context
+    | UInt U64 -> i64_type context
     | Bool -> i1_type context
     | _ -> failwith "Typ to llvm typ failure: unsupported tykind" )
   | _ -> failwith "cannot convert non TyCon to llvm"
@@ -2612,6 +2608,7 @@ let get_tycon_tykind typ =
 let typ_to_llvm_signed typ =
   match typ with
   | TyCon (Int _) -> true
+  | TyCon (UInt _) -> false
   | _ -> failwith "non int cannot be signed or unsigned Unsupported"
 ;;
 
@@ -2774,15 +2771,20 @@ and prim2_to_llvm_op op ltyp rtyp =
   let ltykind = get_tycon_tykind ltyp in
   let rtykind = get_tycon_tykind rtyp in
   match (op, ltykind, rtykind) with
-  | Plus, Int _, Int _ -> build_add
-  | Minus, Int _, Int _ -> build_sub
-  | Times, Int _, Int _ -> build_mul
+  | Plus, Int _, Int _ | Plus, UInt _, UInt _-> build_add
+  | Minus, Int _, Int _ | Minus, UInt _, UInt _ -> build_sub
+  | Times, Int _, Int _ | Times, UInt _, UInt _-> build_mul
   | Divide, Int _, Int _ -> build_sdiv
-  | Eq, Int _, Int _ | Eq, Bool, Bool -> build_icmp Icmp.Eq
+  | Divide, UInt _, UInt _ -> build_udiv
+  | Eq, Int _, Int _ | Eq, Bool, Bool | Eq, UInt _, UInt _ -> build_icmp Icmp.Eq
   | Greater, Int _, Int _ -> build_icmp Icmp.Sgt
   | GreaterEq, Int _, Int _ -> build_icmp Icmp.Sge
   | Less, Int _, Int _ -> build_icmp Icmp.Slt
   | LessEq, Int _, Int _ -> build_icmp Icmp.Sle
+  | Greater, UInt _, UInt _ -> build_icmp Icmp.Ugt
+  | GreaterEq, UInt _, UInt _ -> build_icmp Icmp.Uge
+  | Less, UInt _, UInt _ -> build_icmp Icmp.Ult
+  | LessEq, UInt _, UInt _ -> build_icmp Icmp.Ule
   | _ ->
       failwith
         (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op)
