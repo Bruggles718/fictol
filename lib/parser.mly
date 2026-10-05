@@ -34,7 +34,6 @@ const :
         | "i16" -> I16
         | "i32" | "" -> I32
         | "i64" -> I64
-        | "i128" -> I128
         | _ -> failwith "Unexpected suffix"
       ) in
       ELiteral(LitInt(num, IntSuffix(suff)), full_span()) 
@@ -124,8 +123,8 @@ binop_operand :
   // | EXTERN id LPARENNOSPACE exprs RPAREN %prec LPARENNOSPACE { EApp($2, $4, CCC, full_span()) }
   // | EXTERN id LPARENNOSPACE RPAREN %prec LPARENNOSPACE { EApp($2, [], CCC, full_span()) }
   // Function calls
-  | binop_operand LPARENNOSPACE exprs RPAREN %prec LPARENNOSPACE { EApp($1, $3, Unknown, full_span()) }
-  | binop_operand LPARENNOSPACE RPAREN %prec LPARENNOSPACE { EApp($1, [], Unknown, full_span()) }
+  | binop_operand LPARENNOSPACE exprs RPAREN %prec LPARENNOSPACE { EApp($1, $3, full_span()) }
+  | binop_operand LPARENNOSPACE RPAREN %prec LPARENNOSPACE { EApp($1, [], full_span()) }
   // Parentheses
   | LPARENSPACE expr RPAREN { $2 }
   | LPARENNOSPACE expr RPAREN { $2 }

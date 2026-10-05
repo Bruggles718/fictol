@@ -7,6 +7,7 @@ open Errors
 open Lexing
 open Llvm
 open Stdint
+open Fictol_stubs
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 
@@ -170,15 +171,7 @@ let overloaded_prim2 (op : prim2) : (string * string) option =
 ;;
 
 let add_builtins (p : sourcespan program) : sourcespan program =
-  let widths = [I8; I16; I32; I64; I128] in
-  (* let name_of_width w =
-    match w with
-    | I8 -> "i8"
-    | I16 -> "i16"
-    | I32 -> "i32"
-    | I64 -> "i64"
-    | I128 -> "i128"
-  in *)
+  let widths = [I8; I16; I32; I64] in
   let int_types = List.map (fun w -> TyCon (Int w)) widths in
   let bool_type = TyCon Bool in
   let self = TyVar "Self" in
@@ -215,7 +208,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
           | Some res -> res
           | None -> failwith "seriously what??" ) )
   in
-  let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" bool_type] in
+  let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" bool_type] in
   let ord_class =
     make_class "Ord" params_self
@@ -339,10 +332,10 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         err_lst @ wf_E body env2
     (* | EApp (_, args, Native, _) -> wf_E_list args env *)
-    | EApp (EId (name, id_loc), args, _, loc) ->
+    | EApp (EId (name, id_loc), args, loc) ->
         let fun_err = wf_E (EId (name, id_loc)) env in
         fun_err @ wf_E_list args env
-    | EApp (closure, args, _, loc) ->
+    | EApp (closure, args, loc) ->
         (* let fun_err = wf_E closure env in
         fun_err @ wf_E_list args env *)
         [Unsupported ("Calling closures is not yet supported", loc)]
@@ -476,14 +469,14 @@ let desugar (p : sourcespan program) : sourcespan program =
       match op with
       | _ when !desugar_overloaded_ops && Option.is_some (overloaded_prim1 op) ->
           let _, m = Option.get (overloaded_prim1 op) in
-          EApp (EId (m, tag), [helpE body], FictolFunc, tag)
+          EApp (EId (m, tag), [helpE body], tag)
       | Not -> EIf (helpE body, ELiteral (LitBool false, tag), ELiteral (LitBool true, tag), tag)
       | Add1 | Sub1 | Print | PrintStack | Neg -> EPrim1 (op, helpE body, tag) )
     | EPrim2 (op, left, right, tag) -> (
       match op with
       | _ when !desugar_overloaded_ops && Option.is_some (overloaded_prim2 op) ->
           let _, m = Option.get (overloaded_prim2 op) in
-          EApp (EId (m, tag), [helpE left; helpE right], FictolFunc, tag)
+          EApp (EId (m, tag), [helpE left; helpE right], tag)
       | And -> EIf (helpE left, helpE right, ELiteral (LitBool false, tag), tag)
       | Or -> EIf (helpE left, ELiteral (LitBool true, tag), helpE right, tag)
       | Plus | Minus | Times | Divide | Greater | GreaterEq | Less | LessEq | Eq | CheckSize ->
@@ -496,7 +489,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         let newbinds = List.map (fun (bind, e, tag) -> (bind, helpE e, tag)) bindexps in
         ELetRec (newbinds, helpE body, tag) *)
     | EIf (cond, thn, els, tag) -> EIf (helpE cond, helpE thn, helpE els, tag)
-    | EApp (name, args, native, tag) -> EApp (helpE name, List.map helpE args, native, tag)
+    | EApp (name, args, tag) -> EApp (helpE name, List.map helpE args, tag)
     | ETyApp (e, tys, tag) -> ETyApp (helpE e, tys, tag)
     (* | ELambda (binds, body, tag) ->
         let expandBind bind =
@@ -528,7 +521,6 @@ let rec resolve_typ_path env (typ : typ) =
     | ["i16"] -> TyCon (Int I16)
     | ["i32"] -> TyCon (Int I32)
     | ["i64"] -> TyCon (Int I64)
-    | ["i128"] -> TyCon (Int I128)
     | ["bool"] -> TyCon Bool
     (* change to solve path eventually *)
     | [name] ->
@@ -539,8 +531,8 @@ let rec resolve_typ_path env (typ : typ) =
     | _ -> failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path)) )
   | TyVar name -> TyVar name
   | TyCon name -> TyCon name
-  | TyArrow (args, ret_type) ->
-      TyArrow (List.map (fun arg -> resolve_typ_path env arg) args, resolve_typ_path env ret_type)
+  | TyArrow (args, ret_type, call_type) ->
+      TyArrow (List.map (fun arg -> resolve_typ_path env arg) args, resolve_typ_path env ret_type, call_type)
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp (resolve_typ_path env ret_typ, List.map (fun arg -> resolve_typ_path env arg) args)
@@ -621,8 +613,8 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
         in
         ELet (new_bindings, helpE env body, span)
     | EIf (cond, thn, els, span) -> EIf (helpE env cond, helpE env thn, helpE env els, span)
-    | EApp (closure, args, call_type, span) ->
-        EApp (helpE env closure, List.map (helpE env) args, call_type, span)
+    | EApp (closure, args, span) ->
+        EApp (helpE env closure, List.map (helpE env) args, span)
     | ESeq (e1, e2, span) -> ESeq (helpE env e1, helpE env e2, span)
     | EPrim1 (op, body, span) -> EPrim1 (op, helpE env body, span)
     | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE env l, helpE env r, span)
@@ -639,10 +631,10 @@ let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =
       else
         TyVar name
   | TyCon name -> TyCon name
-  | TyArrow (args, ret_type) ->
+  | TyArrow (args, ret_type, call_type) ->
       TyArrow
         ( List.map (fun arg -> subst_var_typ (tyvar, to_typ) arg) args,
-          subst_var_typ (tyvar, to_typ) ret_type )
+          subst_var_typ (tyvar, to_typ) ret_type, call_type )
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp
@@ -665,10 +657,10 @@ let rec subst_var_typ_in_scheme
       else
         in_typ
   | TyCon name -> TyCon name
-  | TyArrow (args, ret_type) ->
+  | TyArrow (args, ret_type, call_type) ->
       TyArrow
         ( List.map (fun arg -> subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg) args,
-          subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type )
+          subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type, call_type )
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp
@@ -721,7 +713,7 @@ let rec ftv_typ (t : typ) : StringSet.t =
   match t with
   | TyCon _ -> StringSet.empty
   | TyVar name -> StringSet.singleton name
-  | TyArrow (args, ret) ->
+  | TyArrow (args, ret, call_type) ->
       List.fold_right (fun t ftvs -> StringSet.union (ftv_typ t) ftvs) args (ftv_typ ret)
   | TyApp (typ, args) ->
       List.fold_right (fun t ftvs -> StringSet.union (ftv_typ t) ftvs) args (ftv_typ typ)
@@ -776,8 +768,9 @@ let rec unify (t1 : typ) (t2 : typ) (span : sourcespan) : typ subst =
         failwith
           (sprintf "Unification failure at <%s>: inconsistent type constants %s and %s"
              (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2) )
-  | TyArrow (t1_args, t1_ret_ty), TyArrow (t2_args, t2_ret_ty)
-   |TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
+  | TyArrow (t1_args, t1_ret_ty, t1_call_type), TyArrow (t2_args, t2_ret_ty, t2_call_type) when t1_call_type = t2_call_type -> 
+    unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
+  | TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | _ -> failwith (sprintf "Unification failure at <%s>" (string_of_sourcespan span))
 
@@ -827,8 +820,8 @@ let instantiate_for_decl (s : 'a scheme) : (string * typ) list * 'a predicate li
 
 let get_return_typ (typ : typ) =
   match typ with
-  | TyArrow (_, ret_typ) -> ret_typ
-  | _ -> failwith "Expected arrow type"
+  | TyArrow (_, ret_typ, call_type) -> ret_typ
+  | _ -> failwith (sprintf "Expected arrow type, got %s" (string_of_typ typ))
 ;;
 
 (* =====================================================================
@@ -845,10 +838,9 @@ let rec show_typ (t : typ) : string =
   | TyCon (Int I16) -> "i16"
   | TyCon (Int I32) -> "i32"
   | TyCon (Int I64) -> "i64"
-  | TyCon (Int I128) -> "i128"
   | TyCon Bool -> "bool"
   | TyCon (Skolem n) -> n
-  | TyArrow (args, ret) ->
+  | TyArrow (args, ret, call_type) ->
       sprintf "(%s) -> %s" (String.concat ", " (List.map show_typ args)) (show_typ ret)
   | TyBlank _ -> "_"
   | TyApp (f, args) -> sprintf "%s<%s>" (show_typ f) (String.concat ", " (List.map show_typ args))
@@ -873,8 +865,9 @@ let rec typ_equal (t1 : typ) (t2 : typ) : bool =
   match (t1, t2) with
   | TyVar v1, TyVar v2 -> v1 = v2
   | TyCon k1, TyCon k2 -> k1 = k2
-  | TyArrow (args1, ret1), TyArrow (args2, ret2) ->
-      List.length args1 = List.length args2
+  | TyArrow (args1, ret1, call_type1), TyArrow (args2, ret2, call_type2) ->
+      call_type1 = call_type2
+      && List.length args1 = List.length args2
       && List.for_all2 typ_equal args1 args2
       && typ_equal ret1 ret2
   | TyApp (f1, args1), TyApp (f2, args2) ->
@@ -927,7 +920,7 @@ let class_info_of_decl (d : sourcespan decl) : sourcespan class_info =
    m_generics = ms_generics; m_typ = TyArrow(types of ms_args, ms_ret);
    m_has_default = (ms_default <> None). Pure; no table writes. *)
   let method_info_of_method_sig ms =
-    let typ = TyArrow (get_bind_typs ms.ms_args, ms.ms_ret) in
+    let typ = TyArrow (get_bind_typs ms.ms_args, ms.ms_ret, FictolFunc) in
     { m_name= ms.ms_name;
       m_generics= ms.ms_generics;
       m_typ= typ;
@@ -1272,8 +1265,13 @@ let rec match_typ (pat_vars : StringSet.t) (pat : typ) (target : typ) (acc : typ
             None )
   | TyVar v, TyVar t when (not (StringSet.mem v pat_vars)) && v = t -> Some acc
   | TyCon c, _ when typ_equal target pat -> Some acc
-  | TyArrow (pat_args, pat_ret), TyArrow (target_args, target_ret)
-   |TyApp (pat_ret, pat_args), TyApp (target_ret, target_args) -> (
+  | TyArrow (pat_args, pat_ret, pat_call_type), TyArrow (target_args, target_ret, target_call_type) when pat_call_type = target_call_type ->
+    let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
+    let arity_match = List.length pat_args = List.length target_args in (
+    match maybe_sub with
+    | Some sub when arity_match -> match_typ_list pat_vars pat_args target_args sub
+    | _ -> None )
+  | TyApp (pat_ret, pat_args), TyApp (target_ret, target_args) -> (
       let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
       let arity_match = List.length pat_args = List.length target_args in
       match maybe_sub with
@@ -1399,7 +1397,7 @@ let entails (givens : sourcespan predicate list) (p : sourcespan predicate) : bo
 let rec skolemize_typ typ =
   match typ with
   | TyVar name -> TyCon (Skolem name)
-  | TyArrow (args, ret_type) -> TyArrow (List.map skolemize_typ args, skolemize_typ ret_type)
+  | TyArrow (args, ret_type, call_type) -> TyArrow (List.map skolemize_typ args, skolemize_typ ret_type, call_type)
   | TyApp (generic_type, generic_param_types) ->
       TyApp (skolemize_typ generic_type, List.map skolemize_typ generic_param_types)
   | _ -> typ
@@ -1408,7 +1406,7 @@ let rec skolemize_typ typ =
 let rec unskolemize_typ typ =
   match typ with
   | TyCon (Skolem name) -> TyVar name
-  | TyArrow (args, ret_type) -> TyArrow (List.map unskolemize_typ args, unskolemize_typ ret_type)
+  | TyArrow (args, ret_type, call_type) -> TyArrow (List.map unskolemize_typ args, unskolemize_typ ret_type, call_type)
   | TyApp (generic_type, generic_param_types) ->
       TyApp (unskolemize_typ generic_type, List.map unskolemize_typ generic_param_types)
   | _ -> typ
@@ -1448,7 +1446,7 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
 
 let scheme_of_decl (d : 'a decl) : 'a scheme =
   match d with
-  | DFun (name, generics, args, _, _, ret_typ, _) ->
+  | DFun (name, generics, args, _, call_type, ret_typ, _) ->
       let arg_tvs =
         List.map
           (fun arg ->
@@ -1460,7 +1458,7 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
       SForall
         ( List.map name_of_generic_bind generics,
           List.concat (List.map predicates_of_generic_bind generics),
-          TyArrow (arg_tvs, ret_typ) )
+          TyArrow (arg_tvs, ret_typ, call_type) )
   | _ -> failwith "Scheme of decl failure: Cannot get scheme of non DFun"
 ;;
 
@@ -1544,8 +1542,8 @@ let rec map_types_in_expr (f : typ -> typ) (e : 'a expr) : 'a expr =
   | EPrim2 (op, l, r, tag) -> EPrim2 (op, map_types_in_expr f l, map_types_in_expr f r, tag)
   | EIf (cond, thn, els, tag) ->
       EIf (map_types_in_expr f cond, map_types_in_expr f thn, map_types_in_expr f els, tag)
-  | EApp (closure, args, call_type, tag) ->
-      EApp (map_types_in_expr f closure, List.map (map_types_in_expr f) args, call_type, tag)
+  | EApp (closure, args, tag) ->
+      EApp (map_types_in_expr f closure, List.map (map_types_in_expr f) args, tag)
   | ETyApp (body, tys, tag) -> ETyApp (map_types_in_expr f body, List.map f tys, tag)
   | _ -> e
 ;;
@@ -1577,7 +1575,7 @@ let tag_of_expr (e : 'a expr) : 'a =
    |EIf (_, _, _, t)
    |ELiteral (_, t)
    |EId (_, t)
-   |EApp (_, _, _, t)
+   |EApp (_, _, t)
    |ETyApp (_, _, t) -> t
 ;;
 
@@ -1616,7 +1614,7 @@ let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
   | EIf (c, t, el, tag) -> EIf (go c, go t, go el, f tag)
   | ELiteral (lit, tag) -> ELiteral (lit, f tag)
   | EId (x, tag) -> EId (x, f tag)
-  | EApp (fn, args, call_type, tag) -> EApp (go fn, List.map go args, call_type, f tag)
+  | EApp (fn, args, tag) -> EApp (go fn, List.map go args, f tag)
   | ETyApp (body, tys, tag) -> ETyApp (go body, tys, f tag)
 ;;
 
@@ -1689,6 +1687,11 @@ let map_typed_bind_types (f : typ -> typ) (b : typed_tag bind) : typed_tag bind 
 
 let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 
+let call_type_of_arrow_typ typ =
+  match typ with
+  | TyArrow(args, ret, ct) -> ct
+  | _ -> failwith "call_type_of_arrow_typ failure: given non arrow type"
+
 let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     typ subst * typ * sourcespan wanted list * typed_tag expr =
   let infer_app_typ
@@ -1714,7 +1717,8 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     in
     let arg_typs = List.map (apply_subst_typ new_subst) typs in
     let ret_typ = TyVar (gensym_typ "appresult") in
-    let app_ty = apply_subst_typ new_subst (TyArrow (arg_typs, ret_typ)) in
+    let ct = call_type_of_arrow_typ sch_inst in
+    let app_ty = apply_subst_typ new_subst (TyArrow (arg_typs, ret_typ, ct)) in
     let result_subst = unify sch_inst app_ty span in
     (* (printf "result subst:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) result_subst))); *)
     let final_subst = compose_subst new_subst result_subst in
@@ -1749,9 +1753,9 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
         match op with
         | Print | PrintStack ->
             let new_typ = gensym_typ "prim1operand" in
-            SForall ([new_typ], [], TyArrow ([TyVar new_typ], TyVar new_typ))
+            SForall ([new_typ], [], TyArrow ([TyVar new_typ], TyVar new_typ, Prim))
         (* | Add1 | Sub1 | Neg -> SForall ([], [], TyArrow ([t_i32], t_i32)) *)
-        | Not -> SForall ([], [], TyArrow ([t_bool], t_bool))
+        | Not -> SForall ([], [], TyArrow ([t_bool], t_bool, Prim))
         | _ -> failwith (sprintf "unsupported prim1 %s" (string_of_op1 op))
       in
       let sch_cs, sch_inst = instantiate sch in
@@ -1775,7 +1779,7 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
         | Eq ->
             let new_ty = gensym_typ "eqoperand" in
             SForall ([new_ty], [], TyArrow ([TyVar new_ty; TyVar new_ty], t_bool)) *)
-        | And | Or -> SForall ([], [], TyArrow ([t_bool; t_bool], t_bool))
+        | And | Or -> SForall ([], [], TyArrow ([t_bool; t_bool], t_bool, Prim))
         | _ -> failwith (sprintf "unsupported prim2 %s" (string_of_op2 op))
       in
       let sch_cs, sch_inst = instantiate sch in
@@ -1837,10 +1841,10 @@ let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
       let final_typ = apply_subst_typ final_subst body_typ in
       let all_constraints = apply_subst_wanteds final_subst (bind_cs @ body_cs) in
       (final_subst, final_typ, all_constraints, ELet (new_bindings, new_body, (let_loc, final_typ)))
-  | EApp (closure, args, call_type, loc) ->
+  | EApp (closure, args, loc) ->
       let clo_subst, clo_typ, clo_wanted, new_clo_expr = infer_exp_elab env closure in
       let env = apply_subst_schenv clo_subst env in
-      let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, call_type, (loc, ret_typ)) in
+      let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, (loc, ret_typ)) in
       infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
   | _ -> failwith "bad"
 ;;
@@ -1871,10 +1875,10 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
   match d with
   | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) -> (
     match fun_typ with
-    | TyArrow (fun_args, fun_ret_typ) ->
+    | TyArrow (fun_args, fun_ret_typ, ct) ->
         let new_body = apply_subst_expr skolem_subst body in
         let arg_typs = get_bind_typs args in
-        let stated_typ = TyArrow (arg_typs, ret_typ) in
+        let stated_typ = TyArrow (arg_typs, ret_typ, call_type) in
         let _ = unify stated_typ fun_typ loc in
         let body_env =
           List.fold_left2
@@ -1903,7 +1907,7 @@ let check_decl (env : sourcespan scheme envt) (scheme : sourcespan scheme) (d : 
             typed_body,
             call_type,
             ret_typ,
-            (loc, TyArrow (arg_typs, ret_typ)) )
+            (loc, TyArrow (arg_typs, ret_typ, call_type)) )
     | _ -> failwith "Check decl failure: scheme type was not TyArrow" )
   | _ -> failwith "Check decl failure: cannot check non DFun"
 ;;
@@ -2083,7 +2087,8 @@ let rec typ_to_symbol (t : typ) : string =
   match t with
   | TyVar name -> name
   | TyCon tykind -> string_of_tykind tykind
-  | TyArrow (ty_lst, ret_ty) ->
+  | TyArrow (ty_lst, ret_ty, call_type) ->
+      (* "$ct_" ^ (string_of_call_type call_type) *)
       "$"
       ^ ExtString.String.join "$" (List.map string_of_typ ty_lst)
       ^ "$arrow$$"
@@ -2208,7 +2213,7 @@ let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : t
 
 let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag expr =
   match e with
-  | EApp (ETyApp (EId (f_name, id_loc), tys, _), args, call_type, loc) -> (
+  | EApp (ETyApp (EId (f_name, id_loc), tys, _), args, loc) -> (
       List.iter
         (fun typ ->
           match typ with
@@ -2232,7 +2237,7 @@ let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag exp
               Queue.add (new_name, tys) st.worklist
             else
               ();
-            EApp (EId (new_name, id_loc), args, FictolFunc, loc) )
+            EApp (EId (new_name, id_loc), args, loc) )
       | None ->
           (* f_name is a regular function *)
           let new_name = mangle_name f_name tys in
@@ -2240,9 +2245,9 @@ let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag exp
             Queue.add (f_name, tys) st.worklist
           else
             ();
-          EApp (EId (new_name, id_loc), args, call_type, loc) )
-  | EApp (closure, args, call_type, loc) ->
-      EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, call_type, loc)
+          EApp (EId (new_name, id_loc), args, loc) )
+  | EApp (closure, args, loc) ->
+      EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, loc)
   | ELet (bindings, body, loc) ->
       let new_bindings =
         List.map (fun (x, b, binding_loc) -> (x, monomorphize_expr st b, binding_loc)) bindings
@@ -2446,7 +2451,7 @@ let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
     | EIf (c, t, f, tag) -> EIf (helpE env c, helpE env t, helpE env f, tag)
     | ELiteral _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
-    | EApp (func, args, call_type, tag) ->
+    | EApp (func, args, tag) ->
         (* Figure out a way to determine call type. 
       Maybe build a global env of externs, and a global env of top level functions,
       and if its not in either then it's extern?
@@ -2464,7 +2469,7 @@ let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
       know the call type from that. I'm not sure how this will work across function boundaries though.
       maybe don't have raw function pointers at all, only allow passing around explicit closures?*)
         let func = helpE env func in
-        EApp (func, List.map (helpE env) args, call_type, tag)
+        EApp (func, List.map (helpE env) args, tag)
     | ELet (binds, body, tag) ->
         let binds', env' = helpBG env binds in
         let body' = helpE env' body in
@@ -2518,10 +2523,10 @@ let anf (p : (tag * typ) program) : typ aprogram =
         (body_ans, exp_setup @ [BLet (bind, typ, exp_ans)] @ body_setup)
     (* | ELet ((BTuple _, _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away") *)
-    | EApp (func, args, native, (tag, typ)) ->
+    | EApp (func, args, (tag, typ)) ->
         let func_ans, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
-        (CApp (func_ans, new_args, native, typ), func_setup @ List.concat new_setup)
+        (CApp (func_ans, new_args, typ), func_setup @ List.concat new_setup)
     | ESeq (e1, e2, (tag, typ)) ->
         let e1_ans, e1_setup = helpC e1 in
         let e2_ans, e2_setup = helpC e2 in
@@ -2531,8 +2536,7 @@ let anf (p : (tag * typ) program) : typ aprogram =
         (CImmExpr imm, setup)
   and helpI (e : (tag * typ) expr) : typ immexpr * typ anf_bind list =
     match e with
-    | ELiteral (LitInt (n, suffix), (tag, typ)) -> (ImmLiteral (LitInt (n, suffix), typ), [])
-    | ELiteral (LitBool bool_value, (tag, typ)) -> (ImmLiteral (LitBool bool_value, typ), [])
+    | ELiteral (litval, (tag, typ)) -> (ImmLiteral (litval, typ), [])
     | EId (name, (tag, typ)) -> (ImmId (name, typ), [])
     | ESeq (e1, e2, _) ->
         let _, e1_setup = helpI e1 in
@@ -2553,14 +2557,14 @@ let anf (p : (tag * typ) program) : typ aprogram =
         let cond_imm, cond_setup = helpI cond in
         ( ImmId (tmp, typ),
           cond_setup @ [BLet (tmp, typ, CIf (cond_imm, helpA _then, helpA _else, typ))] )
-    | EApp (func, args, native, (tag, typ)) ->
+    | EApp (func, args, (tag, typ)) ->
         let tmp = sprintf "app_%d" tag in
         let new_func, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
         ( ImmId (tmp, typ),
           func_setup
           @ List.concat new_setup
-          @ [BLet (tmp, typ, CApp (new_func, new_args, native, typ))] )
+          @ [BLet (tmp, typ, CApp (new_func, new_args, typ))] )
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, (tag, typ)) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
@@ -2598,7 +2602,7 @@ let rec map_tags_cexpr (f : 'a -> 'b) (c : 'a cexpr) : 'b cexpr =
       CIf (imm cond, map_tags_aexpr f then_, map_tags_aexpr f else_, f tag)
   | CPrim1 (op, arg, tag) -> CPrim1 (op, imm arg, f tag)
   | CPrim2 (op, left, right, tag) -> CPrim2 (op, imm left, imm right, f tag)
-  | CApp (fn, args, call_type, tag) -> CApp (imm fn, List.map imm args, call_type, f tag)
+  | CApp (fn, args, tag) -> CApp (imm fn, List.map imm args, f tag)
   | CImmExpr e -> CImmExpr (imm e)
 
 and map_tags_aexpr (f : 'a -> 'b) (a : 'a aexpr) : 'b aexpr =
@@ -2620,6 +2624,33 @@ let map_tags_aprogram (f : 'a -> 'b) (p : 'a aprogram) : 'b aprogram =
   | AProgram (decls, tag) -> AProgram (List.map (map_tags_adecl f) decls, f tag)
 ;;
 
+let tag_of_immexpr (e : 'a immexpr) : 'a =
+  match e with
+  | ImmLiteral (_, tag) | ImmId (_, tag) -> tag
+;;
+
+let tag_of_cexpr (c : 'a cexpr) : 'a =
+  match c with
+  | CIf (_, _, _, tag)
+   |CPrim1 (_, _, tag)
+   |CPrim2 (_, _, _, tag)
+   |CApp (_, _, tag) ->
+      tag
+  | CImmExpr e -> tag_of_immexpr e
+;;
+
+let tag_of_aexpr (a : 'a aexpr) : 'a =
+  match a with
+  | ASeq (_, _, tag) | ALet (_, _, _, tag) -> tag
+  | ACExpr c -> tag_of_cexpr c
+;;
+
+let tag_of_adecl (d : 'a adecl) : 'a = match d with AFun (_, _, _, _, _, tag) -> tag
+
+let tag_of_aprogram (p : 'a aprogram) : 'a = match p with AProgram (_, tag) -> tag
+
+let tag_of_abind ((_, tag) : 'a abind) : 'a = tag
+
 let atag_prog p =
   let next = ref 0 in
   let tag typ =
@@ -2629,14 +2660,213 @@ let atag_prog p =
   map_tags_aprogram tag p
 ;;
 
+let context = global_context ()
+let the_module = create_module context "my program"
+let builder = builder context
+
+let typ_to_llvm_typ typ =
+  match typ with
+  | TyCon (tykind) -> (
+    match tykind with
+    | Int(I8) -> i8_type context
+    | Int(I16) -> i16_type context
+    | Int(I32) -> i32_type context
+    | Int(I64) -> i64_type context
+    | Bool -> i1_type context
+    | _ -> failwith "Typ to llvm typ failure: unsupported tykind"
+  )
+  | _ -> failwith "cannot convert non TyCon to llvm"
+
+let get_tycon_tykind typ =
+  match typ with
+  | TyCon (tykind) -> tykind
+  | _ -> failwith "Cannot get tykind of non tycon"
+
+let typ_to_llvm_signed typ =
+  match typ with
+  | TyCon (Int (_)) -> true
+  | _ -> failwith "non int cannot be signed or unsigned Unsupported"
+
+let typ_to_llvm_fn_type typ =
+  match typ with
+  | TyArrow (args, ret, call_type) ->
+      function_type (typ_to_llvm_typ ret) (Array.of_list (List.map typ_to_llvm_typ args))
+  | _ -> failwith "expected a function type"
+
+let gensym_compile =
+    let next = ref 0 in
+    fun name ->
+      next := !next + 1;
+      sprintf "%s_%d" name !next
+;;
+
+let call_type_to_llvm_call_conv ct =
+  match ct with
+  | Extern("C") -> Llvm.CallConv.c
+  | _ -> 18 (* tailcc *)
+  
+let rec compile_afun env (f : 'a adecl) : unit =
+  match f with
+  | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
+    let llvm_fun = find env name in
+    let args_env = (List.combine (List.map fst binds) (Array.to_list (params llvm_fun))) in
+    let bb = append_block context "entry" llvm_fun in
+    position_at_end bb builder;
+    (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
+    (match call_type with
+    | Extern(_) -> 
+      let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
+      let _ = build_ret compiled_body builder in ()
+    | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun);
+    Llvm_analysis.assert_valid_function llvm_fun
+
+and forward_declare_func (f : 'a adecl) : string * llvalue =
+  match f with
+  | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
+    let llvm_args =
+      Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ b_typ) binds) in
+    (* the real return type, not void *)
+    let func_type = function_type (typ_to_llvm_typ ret_typ) llvm_args in
+    let llvm_fun = declare_function name func_type the_module in
+    Llvm.set_function_call_conv (call_type_to_llvm_call_conv call_type) llvm_fun;
+    (name, llvm_fun)
+
+(* ---------- non-tail position: produces a value ---------- *)
+
+and compile_aexpr env (e : 'a aexpr) llvm_fun : llvalue =
+  match e with
+  | ACExpr c -> compile_cexpr env c llvm_fun
+  | ALet (name, bound, body, _) ->
+    let v = compile_cexpr env bound llvm_fun in
+    compile_aexpr ((name, v) :: env) body llvm_fun
+  | ASeq (first, rest, _) ->
+    let _ = compile_cexpr env first llvm_fun in
+    compile_aexpr env rest llvm_fun
+
+and compile_cexpr env (c : 'a cexpr) llvm_fun : llvalue =
+  match c with
+  | CImmExpr imm -> compile_immexpr env imm
+  | CPrim2 (op, left, right, (_, typ)) ->
+    let l = compile_immexpr env left in
+    let r = compile_immexpr env right in
+    (prim2_to_llvm_op op typ) l r (gensym_compile "cprim2") builder
+  | CPrim1 (op, body, (_, typ)) ->
+    let b = compile_immexpr env body in
+    (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
+  | CApp (closure, args, _) ->
+    let (_, closure_typ) = tag_of_immexpr closure in
+    let call_type = call_type_of_arrow_typ closure_typ in
+    compile_call env closure args call_type
+  | CIf (cond, thn, els, _) ->
+    let cond_imm = compile_immexpr env cond in
+    let if_name = gensym_compile "if" in
+    let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
+    let els_bb = append_block context (if_name ^ "_else") llvm_fun in
+    let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
+    let _ = build_cond_br cond_imm thn_bb els_bb builder in
+    position_at_end thn_bb builder;
+    let thn_val = compile_aexpr env thn llvm_fun in
+    let thn_end = insertion_block builder in  (* the block the branch ENDED in *)
+    let _ = build_br merge_bb builder in
+    position_at_end els_bb builder;
+    let els_val = compile_aexpr env els llvm_fun in
+    let els_end = insertion_block builder in
+    let _ = build_br merge_bb builder in
+    position_at_end merge_bb builder;
+    build_phi [(thn_val, thn_end); (els_val, els_end)] (if_name ^ "_result") builder
+
+(* ---------- tail position: emits `ret` on every path, returns unit ---------- *)
+
+and compile_aexpr_tail env (e : 'a aexpr) llvm_fun : unit =
+  match e with
+  | ACExpr c -> compile_cexpr_tail env c llvm_fun
+  | ALet (name, bound, body, _) ->
+    let v = compile_cexpr env bound llvm_fun in   (* the bound value is NOT in tail position *)
+    compile_aexpr_tail ((name, v) :: env) body llvm_fun
+  | ASeq (first, rest, _) ->
+    let _ = compile_cexpr env first llvm_fun in
+    compile_aexpr_tail env rest llvm_fun
+
+and compile_cexpr_tail env (c : 'a cexpr) llvm_fun : unit =
+  match c with
+  | CApp (closure, args, _) ->
+    let (_, closure_typ) = tag_of_immexpr closure in
+    let call_type = call_type_of_arrow_typ closure_typ in
+    let call = compile_call env closure args call_type in
+    (* set_musttail call; *)
+    (
+      match call_type with
+      | Extern(_) -> ()
+      | _ -> 
+        Llvm.set_tail_call true call;
+        set_musttail call
+    );
+    (* nothing may sit between the call and this ret *)
+    let _ = build_ret call builder in
+    ()
+  | CIf (cond, thn, els, _) ->
+    let cond_imm = compile_immexpr env cond in
+    let if_name = gensym_compile "if" in
+    let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
+    let els_bb = append_block context (if_name ^ "_else") llvm_fun in
+    let _ = build_cond_br cond_imm thn_bb els_bb builder in
+    (* no merge block: each branch ends in its own ret *)
+    position_at_end thn_bb builder;
+    compile_aexpr_tail env thn llvm_fun;
+    position_at_end els_bb builder;
+    compile_aexpr_tail env els llvm_fun
+  | CImmExpr _ | CPrim1 _ | CPrim2 _ ->
+    let v = compile_cexpr env c llvm_fun in
+    let _ = build_ret v builder in
+    ()
+
+(* shared by both modes; only the tail version sets the tail marker *)
+and compile_call env closure args call_type : llvalue =
+  let callee = compile_immexpr env closure in
+  let llvm_args = Array.of_list (List.map (compile_immexpr env) args) in
+  (* the FUNCTION type, taken from the callee's own type so it matches its declaration *)
+  let fn_type = typ_to_llvm_fn_type (snd (tag_of_immexpr closure)) in
+  let call = build_call fn_type callee llvm_args (gensym_compile "app") builder in
+  Llvm.set_instruction_call_conv (call_type_to_llvm_call_conv call_type) call;
+  call
+and compile_immexpr env (e: 'a immexpr) : llvalue =
+  match e with
+  | ImmId (name, (tag, typ)) -> 
+    find env name
+  | ImmLiteral (LitInt(n, suffix), (tag, typ)) -> const_of_int64 (typ_to_llvm_typ typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
+  | ImmLiteral (LitBool(true), (tag, typ)) -> const_int (i1_type context) 1
+  | ImmLiteral (LitBool(false), (tag, typ)) -> const_int (i1_type context) 0
+
+and prim2_to_llvm_op op typ =
+  let tykind = (get_tycon_tykind typ) in
+  match op, tykind with
+  | Plus, Int(width) -> build_add
+  | Minus, Int(width) -> build_sub
+  | Times, Int(width) -> build_mul
+  | Divide, Int(width) -> build_sdiv
+  | _ -> failwith "unsupported prim2 to llvm op"
+and prim1_to_llvm_op op typ =
+  let tykind = (get_tycon_tykind typ) in
+  match op, tykind with
+  | Neg, _ -> build_neg
+  | Not, _ -> build_not
+  | _ -> failwith "unsupported prim1 to llvm op"
+let compile_prog (prog : (tag * typ) aprogram) : string =
+  match prog with
+  | AProgram (decls, (tag, typ)) ->
+    let llvm_funs_env = List.map forward_declare_func decls in
+    List.iter
+    (compile_afun llvm_funs_env)
+    decls;
+    string_of_llmodule the_module
+
+
 let run_if should_run f =
   if should_run then
     f
   else
     no_op_phase
 ;;
-
-let compile_prog (prog : (tag * typ) aprogram) : string = ""
 
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog

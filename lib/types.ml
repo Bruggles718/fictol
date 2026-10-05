@@ -1,11 +1,17 @@
 type sourcespan = Lexing.position * Lexing.position
 
+type call_type =
+  | Extern of string
+  | FictolFunc
+  | FictolClosure
+  | Prim
+  | Unknown
+
 type signed_int_width =
   | I8
   | I16
   | I32
   | I64
-  | I128
 
 type tykind =
   | Int of signed_int_width
@@ -22,7 +28,7 @@ type tykind =
 type typ =
   | TyVar of string
   | TyCon of tykind
-  | TyArrow of typ list * typ
+  | TyArrow of typ list * typ * call_type
   | TyBlank of sourcespan
   | TyApp of typ * typ list
   | TyPath of string list * sourcespan

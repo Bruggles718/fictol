@@ -34,12 +34,6 @@ and 'a bind =
 
 and 'a binding = 'a bind * 'a expr * 'a
 
-and call_type =
-  | Extern of string
-  | FictolFunc
-  | FictolClosure
-  | Unknown
-
 and int_suffix = IntSuffix of signed_int_width
 
 and lit =
@@ -59,7 +53,7 @@ and 'a expr =
   | ELiteral of lit * 'a
   (* | ENil of 'a *)
   | EId of string * 'a
-  | EApp of 'a expr * 'a expr list * call_type * 'a
+  | EApp of 'a expr * 'a expr list * 'a
   (* | ELambda of 'a bind list * 'a expr * 'a *)
   (* | ELetRec of 'a binding list * 'a expr * 'a *)
   (* | EString of string * 'a *)
@@ -98,7 +92,7 @@ and 'a cexpr =
   | CIf of 'a immexpr * 'a aexpr * 'a aexpr * 'a
   | CPrim1 of prim1 * 'a immexpr * 'a
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
-  | CApp of 'a immexpr * 'a immexpr list * call_type * 'a
+  | CApp of 'a immexpr * 'a immexpr list * 'a
   | CImmExpr of 'a immexpr
 (* for when you just need an immediate value *)
 (* | CTuple of 'a immexpr list * 'a

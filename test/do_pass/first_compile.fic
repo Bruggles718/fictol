@@ -1,0 +1,12 @@
+def f(x: i32) -> i32:
+    5 + x
+
+extern "C" def main() -> i32:
+    let x = 5 in
+    let y = 7 in
+    let z = x + -y in
+    let w = -z + y in
+    if true:
+        f(w)
+    else:
+        1

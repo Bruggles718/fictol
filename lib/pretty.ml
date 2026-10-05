@@ -82,15 +82,14 @@ let rec string_of_tykind (t : tykind) =
     | I8 -> "i8"
     | I16 -> "i16"
     | I32 -> "i32"
-    | I64 -> "i64"
-    | I128 -> "i128" )
+    | I64 -> "i64" )
 ;;
 
 let rec string_of_typ (t : typ) : string =
   match t with
   | TyVar name -> name
   | TyCon tykind -> string_of_tykind tykind
-  | TyArrow (ty_lst, ret_ty) ->
+  | TyArrow (ty_lst, ret_ty, call_type) ->
       "("
       ^ ExtString.String.join ", " (List.map string_of_typ ty_lst)
       ^ ") -> "
@@ -142,6 +141,7 @@ let string_of_call_type ct =
   | FictolFunc -> ""
   | FictolClosure -> "#"
   | Unknown -> "?"
+  | Prim -> "p"
 ;;
 
 let rec string_of_binding_with (depth : int) (print_a : 'a -> string) ((bind, expr, _) : 'a binding)
@@ -180,8 +180,8 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | EIf (cond, thn, els, a) ->
         sprintf "(if %s: %s else: %s)%s" (string_of_expr cond) (string_of_expr thn)
           (string_of_expr els) (print_a a)
-    | EApp (func, args, call_type, a) ->
-        sprintf "(%s%s(%s))%s" (string_of_call_type call_type) (string_of_expr func)
+    | EApp (func, args, a) ->
+        sprintf "(%s(%s))%s" (string_of_expr func)
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
     | ETyApp (e, typs, a) -> string_of_expr e
@@ -329,8 +329,8 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     | CIf (cond, thn, els, a) ->
         sprintf "(if %s: %s else: %s)%s" (string_of_immexpr cond) (string_of_aexpr thn)
           (string_of_aexpr els) (print_a a)
-    | CApp (func, args, call_type, a) ->
-        sprintf "(%s%s(%s))%s" (string_of_call_type call_type) (string_of_immexpr func)
+    | CApp (func, args, a) ->
+        sprintf "(%s(%s))%s" (string_of_immexpr func)
           (ExtString.String.join ", " (List.map string_of_immexpr args))
           (print_a a)
     | CImmExpr i -> string_of_immexpr i
