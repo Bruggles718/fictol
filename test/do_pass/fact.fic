@@ -1,0 +1,8 @@
+def fact(n: i32) -> i32:
+    if n <= 1:
+        1
+    else:
+        n * fact(n - 1)
+
+extern "C" def main() -> i32:
+    fact(5)

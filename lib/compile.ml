@@ -2749,7 +2749,9 @@ and compile_cexpr env (c : 'a cexpr) llvm_fun : llvalue =
   | CPrim2 (op, left, right, (_, typ)) ->
     let l = compile_immexpr env left in
     let r = compile_immexpr env right in
-    (prim2_to_llvm_op op typ) l r (gensym_compile "cprim2") builder
+    let (_, ltyp) = tag_of_immexpr left in
+    let (_, rtyp) = tag_of_immexpr right in
+    (prim2_to_llvm_op op ltyp rtyp) l r (gensym_compile "cprim2") builder
   | CPrim1 (op, body, (_, typ)) ->
     let b = compile_immexpr env body in
     (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
@@ -2837,20 +2839,26 @@ and compile_immexpr env (e: 'a immexpr) : llvalue =
   | ImmLiteral (LitBool(true), (tag, typ)) -> const_int (i1_type context) 1
   | ImmLiteral (LitBool(false), (tag, typ)) -> const_int (i1_type context) 0
 
-and prim2_to_llvm_op op typ =
-  let tykind = (get_tycon_tykind typ) in
-  match op, tykind with
-  | Plus, Int(width) -> build_add
-  | Minus, Int(width) -> build_sub
-  | Times, Int(width) -> build_mul
-  | Divide, Int(width) -> build_sdiv
-  | _ -> failwith "unsupported prim2 to llvm op"
+and prim2_to_llvm_op op ltyp rtyp =
+  let ltykind = (get_tycon_tykind ltyp) in
+  let rtykind = (get_tycon_tykind rtyp) in
+  match op, ltykind, rtykind with
+  | Plus, Int(_), Int(_) -> build_add
+  | Minus, Int(_), Int(_) -> build_sub
+  | Times, Int(_), Int(_) -> build_mul
+  | Divide, Int(_), Int(_) -> build_sdiv
+  | Eq, Int(_), Int(_) | Eq, Bool, Bool -> build_icmp Icmp.Eq
+  | Greater, Int(_), Int(_) -> build_icmp Icmp.Sgt
+  | GreaterEq, Int(_), Int(_) -> build_icmp Icmp.Sge
+  | Less, Int(_), Int(_) -> build_icmp Icmp.Slt
+  | LessEq, Int(_), Int(_) -> build_icmp Icmp.Sle
+  | _ -> failwith (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op) (string_of_typ ltyp) (string_of_typ rtyp))
 and prim1_to_llvm_op op typ =
   let tykind = (get_tycon_tykind typ) in
   match op, tykind with
   | Neg, _ -> build_neg
   | Not, _ -> build_not
-  | _ -> failwith "unsupported prim1 to llvm op"
+  | _ -> failwith (sprintf "unsupported prim2 to llvm op %s for typ %s" (string_of_op1 op) (string_of_typ typ))
 let compile_prog (prog : (tag * typ) aprogram) : string =
   match prog with
   | AProgram (decls, (tag, typ)) ->
