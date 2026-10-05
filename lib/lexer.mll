@@ -84,6 +84,9 @@ rule token = parse
   | "extern" { EXTERN }
   | "->" { ARROW }
   | "." { DOT }
+  | "typeclass" { TYPECLASS }
+  | "instance" { INSTANCE }
+  | "extends" { EXTENDS }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | '"' { Buffer.clear strbuf; string_literal lexbuf }
   | eof { EOF }

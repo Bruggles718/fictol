@@ -10,7 +10,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %token <string> STRING
 %token <Stdint.uint128 * string> INT
 %token <string> ID
-%token ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
+%token TYPECLASS INSTANCE EXTENDS ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
 
 %right SEMI
 %left COLON COLONEQ
@@ -185,6 +185,40 @@ or_chain :
 
 decl :
   | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ret_typ_opt COLON expr { DFun($3, $4, $6, $10, $1, $8, full_span()) }
+  | TYPECLASS ID LESSNOSPACE ids GREATER extends_opt COLON method_sigs {
+    DClass($2, $4, $6, $8, full_span())
+  }
+  | INSTANCE generics_opt generic_bounds COLON method_impls {
+    let impls = List.map (fun decl -> ImplDecl (decl)) $5 in
+    match $3 with
+    | [pred] -> DInstance($2, pred, impls, full_span())
+    | _ -> failwith "Unexpected number of predicates"
+  }
+
+method_impls :
+  | decl { [$1] }
+  | decl ANDDEF method_impls { $1::$3 }
+
+extends_opt :
+  | /* empty */ { [] }
+  | EXTENDS generic_bounds { $2 }
+
+method_sig :
+  | DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ret_typ_opt expr_opt { 
+      { ms_name = $2; ms_generics = $3; ms_args = $5; ms_ret = $7; ms_default = $8; ms_span = full_span()} 
+    }
+
+method_sigs :
+  | method_sig { [$1] }
+  | method_sig ANDDEF method_sigs { $1::$3 }
+
+expr_opt :
+  | /* empty */ { None }
+  | COLON expr { Some($2) }
+
+ids : 
+  | ID { [$1] }
+  | ID COMMA ids { $1::$3 }
 
 generics_opt:
   | /* empty */ { [] }

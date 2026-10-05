@@ -1,0 +1,16 @@
+typeclass MyClass<Self>:
+    def myclass_method_with_default(self: Self) -> Self:
+        self
+
+typeclass MyOtherClass<Self>:
+    def myclass_method_empty(self: Self) -> Self
+
+typeclass MyMethodListClass<Self>:
+    def myclass_method_one(self: Self) -> Self
+    and def next_two(self: Self, x: i32) -> Self
+    and def next_three(self: Self, egg: bool) -> bool:
+        true
+    and def next_four<T>(self: Self, temp: T) -> T
+
+extern "C" def main() -> i32:
+    0
