@@ -2,3 +2,5 @@ _build
 _opam
 .vscode
 main
+*.o
+*.ll
