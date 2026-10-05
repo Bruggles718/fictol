@@ -37,7 +37,7 @@ and 'a binding = 'a bind * 'a expr * 'a
 and int_suffix = IntSuffix of signed_int_width
 
 and lit =
-  | LitInt of uint128 * int_suffix
+  | LitInt of uint64 * int_suffix
   (* | Float of float * 'a *)
   | LitBool of bool
 

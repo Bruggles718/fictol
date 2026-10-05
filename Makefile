@@ -6,10 +6,19 @@ TEST_DIR := test
 TEST_EXE := test_fictol
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
-#   NASM_FORMAT=elf64
   CLANG_FLAGS=-mstackrealign -m64 -g -fstack-protector-all -Wstack-protector -fno-omit-frame-pointer -z noexecstack
 endif
-.PHONY: all test clean
+.PHONY: _build test
+
+build:
+	dune build
+	cp ./_build/default/$(EXE_DIR)/$(EXE).exe main
+
+test:
+	dune build
+	mv ./_build/default/$(TEST_DIR)/$(TEST_EXE).exe test_fictol
+
+
 
 test/output/%.run: test/output/%.o driver.c 
 	clang $(CLANG_FLAGS) -o $@ driver.c $<
@@ -64,14 +73,9 @@ test/output/dont_err/%.o: test/output/dont_err/%.ll
 test/output/dont_err/%.ll: test/input/dont_err/%.fic main
 	./main $< > $@
 
-test:
-	dune build
-	ln -sf _build/default/$(TEST_DIR)/$(TEST_EXE).exe ./$(TEST_EXE)
-
-all:
-	dune build
-	ln -sf _build/default/$(EXE_DIR)/$(EXE).exe ./$(EXE)
-
 clean:
 	dune clean
-	rm -f ./$(EXE)
+	rm -rf test/output/*.o test/output/*.ll test/output/*.dSYM test/output/*.run *.log *.o
+	rm -rf test/output/*/*.o test/output/*/*.ll test/output/*/*.dSYM test/output/*/*.run
+	rm -rf fun/*.o
+	rm -f ./main ./test_fictol

@@ -67,8 +67,6 @@ let name_of_generic_bind g =
 
 type scope_info = sourcespan * int option * int option
 
-let built_in_types = StringSet.of_list ["i32"; "bool"]
-
 (* =====================================================================
    TYPE CLASSES, SECTION A: errors, global tables, front-end stubs.
    Everything in sections A, B and C is either a stub (failwith "TODO") or
@@ -309,10 +307,9 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | ELiteral (LitBool _, _) -> []
     | ELiteral (LitInt (n, _), loc) ->
         if
-          Int128.of_uint128 n > Int128.of_int32 Int32.max_int
-          || Int128.of_uint128 n < Int128.of_int32 Int32.min_int
+          n > Uint64.max_int
         then
-          [Overflow (Int128.of_uint128 n, loc)]
+          [Overflow (n, loc)]
         else
           []
     | EId (x, loc) -> (
@@ -2769,7 +2766,7 @@ and compile_immexpr context env (e : 'a immexpr) : llvalue =
   match e with
   | ImmId (name, (tag, typ)) -> find env name
   | ImmLiteral (LitInt (n, suffix), (tag, typ)) ->
-      const_of_int64 (typ_to_llvm_typ context typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
+      const_of_int64 (typ_to_llvm_typ context typ) (Uint64.to_int64 n) (typ_to_llvm_signed typ)
   | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
   | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
 

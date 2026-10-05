@@ -15,7 +15,7 @@ exception DuplicateId of string * sourcespan * sourcespan (* name, where used, w
 exception DuplicateFun of string * sourcespan * sourcespan (* name, where used, where defined *)
 
 (* value, where used *)
-exception Overflow of int128 * sourcespan
+exception Overflow of uint64 * sourcespan
 
 exception Arity of int * int * sourcespan (* intended arity, actual arity, where called *)
 
@@ -76,7 +76,7 @@ let print_error exn =
         (string_of_sourcespan loc) (string_of_sourcespan existing)
   | Overflow (num, loc) ->
       sprintf "The number literal %s, used at <%s>, is not supported in this language"
-        (Int128.to_string num) (string_of_sourcespan loc)
+        (Uint64.to_string num) (string_of_sourcespan loc)
   | Arity (expected, actual, loc) ->
       sprintf "The function called at <%s> expected an arity of %d, but received %d arguments"
         (string_of_sourcespan loc) expected actual

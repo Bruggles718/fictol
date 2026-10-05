@@ -39,7 +39,7 @@ rule token = parse
   | '\n' "<" { ignore_new_line lexbuf; LESSSPACE }
   | blank { token lexbuf }
   | '\n' { new_line lexbuf; token lexbuf }
-  | (unsigned_int as x) (int_suffix? as suff) { INT (Stdint.Uint128.of_string x, suff) }
+  | (unsigned_int as x) (int_suffix? as suff) { INT (Stdint.Uint64.of_string x, suff) }
   | ":=" { COLONEQ }
   | ":" { COLON }
   | "def" { DEF }

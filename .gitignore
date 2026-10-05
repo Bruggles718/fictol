@@ -5,3 +5,5 @@ main
 *.o
 *.ll
 *.run
+test_fictol
+*.cache
