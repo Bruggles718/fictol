@@ -5,8 +5,8 @@ instance<Self, Other> Equal<Self, Other>:
     def equal(a: Self, b: Other) -> bool:
         false
         
-extern "C" def main() -> i32:
+extern "C" def test_entry() -> i32:
     if equal(true, false):
-        0
-    else:
         1
+    else:
+        0

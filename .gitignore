@@ -4,3 +4,4 @@ _opam
 main
 *.o
 *.ll
+*.run

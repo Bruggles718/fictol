@@ -1,0 +1,1 @@
+Failure("Solve wanted failure: no instance Add<Skolem(T)>. Add constraint at <do_pass/add_test, 2:4-2:9>")

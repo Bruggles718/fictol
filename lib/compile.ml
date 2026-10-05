@@ -2593,13 +2593,7 @@ let atag_prog p =
   map_tags_aprogram tag p
 ;;
 
-let context = global_context ()
-
-let the_module = create_module context "my program"
-
-let builder = builder context
-
-let typ_to_llvm_typ typ =
+let typ_to_llvm_typ context typ =
   match typ with
   | TyCon tykind -> (
     match tykind with
@@ -2624,10 +2618,10 @@ let typ_to_llvm_signed typ =
   | _ -> failwith "non int cannot be signed or unsigned Unsupported"
 ;;
 
-let typ_to_llvm_fn_type typ =
+let typ_to_llvm_fn_type context typ =
   match typ with
   | TyArrow (args, ret, call_type) ->
-      function_type (typ_to_llvm_typ ret) (Array.of_list (List.map typ_to_llvm_typ args))
+      function_type (typ_to_llvm_typ context ret) (Array.of_list (List.map (typ_to_llvm_typ context) args))
   | _ -> failwith "expected a function type"
 ;;
 
@@ -2644,7 +2638,7 @@ let call_type_to_llvm_call_conv ct =
   | _ -> 18 (* tailcc *)
 ;;
 
-let rec compile_afun env (f : 'a adecl) : unit =
+let rec compile_afun context builder env (f : 'a adecl) : unit =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
       let llvm_fun = find env name in
@@ -2654,66 +2648,66 @@ let rec compile_afun env (f : 'a adecl) : unit =
       (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
       ( match call_type with
       | Extern _ ->
-          let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
+          let compiled_body = compile_aexpr context builder (args_env @ env) body llvm_fun in
           let _ = build_ret compiled_body builder in
           ()
-      | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun );
+      | _ -> compile_aexpr_tail context builder (args_env @ env) body llvm_fun );
       Llvm_analysis.assert_valid_function llvm_fun
 
-and forward_declare_func (f : 'a adecl) : string * llvalue =
+and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
       let llvm_args =
-        Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ b_typ) binds)
+        Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ context b_typ) binds)
       in
       (* the real return type, not void *)
-      let func_type = function_type (typ_to_llvm_typ ret_typ) llvm_args in
+      let func_type = function_type (typ_to_llvm_typ context ret_typ) llvm_args in
       let llvm_fun = declare_function name func_type the_module in
       Llvm.set_function_call_conv (call_type_to_llvm_call_conv call_type) llvm_fun;
       (name, llvm_fun)
 
 (* ---------- non-tail position: produces a value ---------- *)
 
-and compile_aexpr env (e : 'a aexpr) llvm_fun : llvalue =
+and compile_aexpr context builder env (e : 'a aexpr) llvm_fun : llvalue =
   match e with
-  | ACExpr c -> compile_cexpr env c llvm_fun
+  | ACExpr c -> compile_cexpr context builder  env c llvm_fun
   | ALet (name, bound, body, _) ->
-      let v = compile_cexpr env bound llvm_fun in
-      compile_aexpr ((name, v) :: env) body llvm_fun
+      let v = compile_cexpr context builder env bound llvm_fun in
+      compile_aexpr context builder ((name, v) :: env) body llvm_fun
   | ASeq (first, rest, _) ->
-      let _ = compile_cexpr env first llvm_fun in
-      compile_aexpr env rest llvm_fun
+      let _ = compile_cexpr context builder env first llvm_fun in
+      compile_aexpr context builder env rest llvm_fun
 
-and compile_cexpr env (c : 'a cexpr) llvm_fun : llvalue =
+and compile_cexpr context builder env (c : 'a cexpr) llvm_fun : llvalue =
   match c with
-  | CImmExpr imm -> compile_immexpr env imm
+  | CImmExpr imm -> compile_immexpr context env imm
   | CPrim2 (op, left, right, (_, typ)) ->
-      let l = compile_immexpr env left in
-      let r = compile_immexpr env right in
+      let l = compile_immexpr context env left in
+      let r = compile_immexpr context env right in
       let _, ltyp = tag_of_immexpr left in
       let _, rtyp = tag_of_immexpr right in
       (prim2_to_llvm_op op ltyp rtyp) l r (gensym_compile "cprim2") builder
   | CPrim1 (op, body, (_, typ)) ->
-      let b = compile_immexpr env body in
+      let b = compile_immexpr context env body in
       (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
   | CApp (closure, args, _) ->
       let _, closure_typ = tag_of_immexpr closure in
       let call_type = call_type_of_arrow_typ closure_typ in
-      compile_call env closure args call_type
+      compile_call context builder env closure args call_type
   | CIf (cond, thn, els, _) ->
-      let cond_imm = compile_immexpr env cond in
+      let cond_imm = compile_immexpr context env cond in
       let if_name = gensym_compile "if" in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
       let _ = build_cond_br cond_imm thn_bb els_bb builder in
       position_at_end thn_bb builder;
-      let thn_val = compile_aexpr env thn llvm_fun in
+      let thn_val = compile_aexpr context builder env thn llvm_fun in
       let thn_end = insertion_block builder in
       (* the block the branch ENDED in *)
       let _ = build_br merge_bb builder in
       position_at_end els_bb builder;
-      let els_val = compile_aexpr env els llvm_fun in
+      let els_val = compile_aexpr context builder env els llvm_fun in
       let els_end = insertion_block builder in
       let _ = build_br merge_bb builder in
       position_at_end merge_bb builder;
@@ -2721,23 +2715,23 @@ and compile_cexpr env (c : 'a cexpr) llvm_fun : llvalue =
 
 (* ---------- tail position: emits `ret` on every path, returns unit ---------- *)
 
-and compile_aexpr_tail env (e : 'a aexpr) llvm_fun : unit =
+and compile_aexpr_tail context builder env (e : 'a aexpr) llvm_fun : unit =
   match e with
-  | ACExpr c -> compile_cexpr_tail env c llvm_fun
+  | ACExpr c -> compile_cexpr_tail context builder env c llvm_fun
   | ALet (name, bound, body, _) ->
-      let v = compile_cexpr env bound llvm_fun in
+      let v = compile_cexpr context builder env bound llvm_fun in
       (* the bound value is NOT in tail position *)
-      compile_aexpr_tail ((name, v) :: env) body llvm_fun
+      compile_aexpr_tail context builder ((name, v) :: env) body llvm_fun
   | ASeq (first, rest, _) ->
-      let _ = compile_cexpr env first llvm_fun in
-      compile_aexpr_tail env rest llvm_fun
+      let _ = compile_cexpr context builder env first llvm_fun in
+      compile_aexpr_tail context builder env rest llvm_fun
 
-and compile_cexpr_tail env (c : 'a cexpr) llvm_fun : unit =
+and compile_cexpr_tail context builder env (c : 'a cexpr) llvm_fun : unit =
   match c with
   | CApp (closure, args, _) ->
       let _, closure_typ = tag_of_immexpr closure in
       let call_type = call_type_of_arrow_typ closure_typ in
-      let call = compile_call env closure args call_type in
+      let call = compile_call context builder env closure args call_type in
       (* set_musttail call; *)
       ( match call_type with
       | Extern _ -> ()
@@ -2746,36 +2740,36 @@ and compile_cexpr_tail env (c : 'a cexpr) llvm_fun : unit =
       let _ = build_ret call builder in
       ()
   | CIf (cond, thn, els, _) ->
-      let cond_imm = compile_immexpr env cond in
+      let cond_imm = compile_immexpr context env cond in
       let if_name = gensym_compile "if" in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let _ = build_cond_br cond_imm thn_bb els_bb builder in
       (* no merge block: each branch ends in its own ret *)
       position_at_end thn_bb builder;
-      compile_aexpr_tail env thn llvm_fun;
+      compile_aexpr_tail context builder env thn llvm_fun;
       position_at_end els_bb builder;
-      compile_aexpr_tail env els llvm_fun
+      compile_aexpr_tail context builder env els llvm_fun
   | CImmExpr _ | CPrim1 _ | CPrim2 _ ->
-      let v = compile_cexpr env c llvm_fun in
+      let v = compile_cexpr context builder env c llvm_fun in
       let _ = build_ret v builder in
       ()
 
 (* shared by both modes; only the tail version sets the tail marker *)
-and compile_call env closure args call_type : llvalue =
-  let callee = compile_immexpr env closure in
-  let llvm_args = Array.of_list (List.map (compile_immexpr env) args) in
+and compile_call context builder env closure args call_type : llvalue =
+  let callee = compile_immexpr context env closure in
+  let llvm_args = Array.of_list (List.map (compile_immexpr context env) args) in
   (* the FUNCTION type, taken from the callee's own type so it matches its declaration *)
-  let fn_type = typ_to_llvm_fn_type (snd (tag_of_immexpr closure)) in
+  let fn_type = typ_to_llvm_fn_type context (snd (tag_of_immexpr closure)) in
   let call = build_call fn_type callee llvm_args (gensym_compile "app") builder in
   Llvm.set_instruction_call_conv (call_type_to_llvm_call_conv call_type) call;
   call
 
-and compile_immexpr env (e : 'a immexpr) : llvalue =
+and compile_immexpr context env (e : 'a immexpr) : llvalue =
   match e with
   | ImmId (name, (tag, typ)) -> find env name
   | ImmLiteral (LitInt (n, suffix), (tag, typ)) ->
-      const_of_int64 (typ_to_llvm_typ typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
+      const_of_int64 (typ_to_llvm_typ context typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
   | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
   | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
 
@@ -2807,11 +2801,11 @@ and prim1_to_llvm_op op typ =
         (sprintf "unsupported prim2 to llvm op %s for typ %s" (string_of_op1 op) (string_of_typ typ))
 ;;
 
-let compile_prog (prog : (tag * typ) aprogram) : string =
+let compile_prog context the_module builder (prog : (tag * typ) aprogram) : string =
   match prog with
   | AProgram (decls, (tag, typ)) ->
-      let llvm_funs_env = List.map forward_declare_func decls in
-      List.iter (compile_afun llvm_funs_env) decls;
+      let llvm_funs_env = List.map (forward_declare_func the_module context) decls in
+      List.iter (compile_afun context builder llvm_funs_env) decls;
       string_of_llmodule the_module
 ;;
 
@@ -2822,7 +2816,10 @@ let run_if should_run f =
     no_op_phase
 ;;
 
-let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
+let compile_to_string (module_name : string) (prog : sourcespan program pipeline) : string pipeline =
+  let context = global_context () in
+  let the_module = create_module context module_name in
+  let builder = builder context in
   prog
   |> add_err_phase well_formed (fun p -> is_well_formed (add_builtins p))
   |> add_phase desugared desugar
@@ -2835,7 +2832,7 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   |> add_phase tagged tag_prog
   |> add_phase renamed rename_and_tag
   |> add_phase anfed (fun p -> atag_prog (anf p))
-  |> add_phase result compile_prog
+  |> add_phase result (compile_prog context the_module builder)
 ;;
 (* prog *)
 (* |> add_err_phase well_formed is_well_formed

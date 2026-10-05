@@ -1,5 +1,5 @@
 def f(x: i32) -> i32:
     x + 5
 
-def main() -> i32:
+extern "C" def test_entry() -> i32:
     f(7)

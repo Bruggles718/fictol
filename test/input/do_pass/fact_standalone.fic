@@ -1,0 +1,32 @@
+extern "C" def fact(n: i32) -> i32:
+    if n <= 1:
+        1
+    else:
+        n * fact(n - 1)
+
+extern "C" def fact_tail(n: i32) -> i32:
+    fact_tail_helper(n, 1)
+
+def fact_tail_helper(n: i32, acc: i32) -> i32:
+    if n <= 1:
+        acc
+    else:
+        fact_tail_helper(n - 1, n * acc)
+
+extern "C" def summorial(n: i64) -> i64:
+    if n <= 0i64:
+        0i64
+    else:
+        n + summorial(n - 1i64)
+    
+extern "C" def summorial_tail(n: i64) -> i64:
+    summorial_tail_helper(n, 0i64)
+
+def summorial_tail_helper(n: i64, acc: i64) -> i64:
+    if n <= 0i64:
+        acc
+    else:
+        summorial_tail_helper(n - 1i64, acc + n)
+
+extern "C" def test_entry() -> i64:
+    summorial_tail(1000000i64)
