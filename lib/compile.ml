@@ -532,7 +532,10 @@ let rec resolve_typ_path env (typ : typ) =
   | TyVar name -> TyVar name
   | TyCon name -> TyCon name
   | TyArrow (args, ret_type, call_type) ->
-      TyArrow (List.map (fun arg -> resolve_typ_path env arg) args, resolve_typ_path env ret_type, call_type)
+      TyArrow
+        ( List.map (fun arg -> resolve_typ_path env arg) args,
+          resolve_typ_path env ret_type,
+          call_type )
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp (resolve_typ_path env ret_typ, List.map (fun arg -> resolve_typ_path env arg) args)
@@ -613,8 +616,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
         in
         ELet (new_bindings, helpE env body, span)
     | EIf (cond, thn, els, span) -> EIf (helpE env cond, helpE env thn, helpE env els, span)
-    | EApp (closure, args, span) ->
-        EApp (helpE env closure, List.map (helpE env) args, span)
+    | EApp (closure, args, span) -> EApp (helpE env closure, List.map (helpE env) args, span)
     | ESeq (e1, e2, span) -> ESeq (helpE env e1, helpE env e2, span)
     | EPrim1 (op, body, span) -> EPrim1 (op, helpE env body, span)
     | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE env l, helpE env r, span)
@@ -634,7 +636,8 @@ let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =
   | TyArrow (args, ret_type, call_type) ->
       TyArrow
         ( List.map (fun arg -> subst_var_typ (tyvar, to_typ) arg) args,
-          subst_var_typ (tyvar, to_typ) ret_type, call_type )
+          subst_var_typ (tyvar, to_typ) ret_type,
+          call_type )
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp
@@ -660,7 +663,8 @@ let rec subst_var_typ_in_scheme
   | TyArrow (args, ret_type, call_type) ->
       TyArrow
         ( List.map (fun arg -> subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg) args,
-          subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type, call_type )
+          subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_type,
+          call_type )
   | TyBlank t -> TyBlank t
   | TyApp (ret_typ, args) ->
       TyApp
@@ -768,8 +772,8 @@ let rec unify (t1 : typ) (t2 : typ) (span : sourcespan) : typ subst =
         failwith
           (sprintf "Unification failure at <%s>: inconsistent type constants %s and %s"
              (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2) )
-  | TyArrow (t1_args, t1_ret_ty, t1_call_type), TyArrow (t2_args, t2_ret_ty, t2_call_type) when t1_call_type = t2_call_type -> 
-    unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
+  | TyArrow (t1_args, t1_ret_ty, t1_call_type), TyArrow (t2_args, t2_ret_ty, t2_call_type)
+    when t1_call_type = t2_call_type -> unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | _ -> failwith (sprintf "Unification failure at <%s>" (string_of_sourcespan span))
@@ -1265,12 +1269,13 @@ let rec match_typ (pat_vars : StringSet.t) (pat : typ) (target : typ) (acc : typ
             None )
   | TyVar v, TyVar t when (not (StringSet.mem v pat_vars)) && v = t -> Some acc
   | TyCon c, _ when typ_equal target pat -> Some acc
-  | TyArrow (pat_args, pat_ret, pat_call_type), TyArrow (target_args, target_ret, target_call_type) when pat_call_type = target_call_type ->
-    let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
-    let arity_match = List.length pat_args = List.length target_args in (
-    match maybe_sub with
-    | Some sub when arity_match -> match_typ_list pat_vars pat_args target_args sub
-    | _ -> None )
+  | TyArrow (pat_args, pat_ret, pat_call_type), TyArrow (target_args, target_ret, target_call_type)
+    when pat_call_type = target_call_type -> (
+      let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
+      let arity_match = List.length pat_args = List.length target_args in
+      match maybe_sub with
+      | Some sub when arity_match -> match_typ_list pat_vars pat_args target_args sub
+      | _ -> None )
   | TyApp (pat_ret, pat_args), TyApp (target_ret, target_args) -> (
       let maybe_sub = match_typ pat_vars pat_ret target_ret acc in
       let arity_match = List.length pat_args = List.length target_args in
@@ -1397,7 +1402,8 @@ let entails (givens : sourcespan predicate list) (p : sourcespan predicate) : bo
 let rec skolemize_typ typ =
   match typ with
   | TyVar name -> TyCon (Skolem name)
-  | TyArrow (args, ret_type, call_type) -> TyArrow (List.map skolemize_typ args, skolemize_typ ret_type, call_type)
+  | TyArrow (args, ret_type, call_type) ->
+      TyArrow (List.map skolemize_typ args, skolemize_typ ret_type, call_type)
   | TyApp (generic_type, generic_param_types) ->
       TyApp (skolemize_typ generic_type, List.map skolemize_typ generic_param_types)
   | _ -> typ
@@ -1406,7 +1412,8 @@ let rec skolemize_typ typ =
 let rec unskolemize_typ typ =
   match typ with
   | TyCon (Skolem name) -> TyVar name
-  | TyArrow (args, ret_type, call_type) -> TyArrow (List.map unskolemize_typ args, unskolemize_typ ret_type, call_type)
+  | TyArrow (args, ret_type, call_type) ->
+      TyArrow (List.map unskolemize_typ args, unskolemize_typ ret_type, call_type)
   | TyApp (generic_type, generic_param_types) ->
       TyApp (unskolemize_typ generic_type, List.map unskolemize_typ generic_param_types)
   | _ -> typ
@@ -1689,8 +1696,9 @@ let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 
 let call_type_of_arrow_typ typ =
   match typ with
-  | TyArrow(args, ret, ct) -> ct
+  | TyArrow (args, ret, ct) -> ct
   | _ -> failwith "call_type_of_arrow_typ failure: given non arrow type"
+;;
 
 let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
     typ subst * typ * sourcespan wanted list * typed_tag expr =
@@ -2074,21 +2082,24 @@ let infer_prog_elab (env : sourcespan scheme envt) (p : sourcespan program) : ty
 
 type mono_resolution =
   | ResolvedDecl of typed_tag decl * typ subst
-  (* a DFun body to specialise, plus the substitution for its type variables *)
   | ResolvedPrim1 of prim1
   | ResolvedPrim2 of prim2
 
+type mono_request =
+  { template: typed_tag decl;
+    subst: typ subst;
+    new_name: string }
+
 type mono_state =
-  { requested: (string, unit) Hashtbl.t; (* mangled names already queued *)
-    worklist: (string * typ list) Queue.t; (* generic fn name, concrete type args *)
-    mutable emitted: typed_tag decl list (* finished concrete DFuns *) }
+  { requested: (string, unit) Hashtbl.t;
+    worklist: mono_request Queue.t;
+    mutable emitted: typed_tag decl list }
 
 let rec typ_to_symbol (t : typ) : string =
   match t with
   | TyVar name -> name
   | TyCon tykind -> string_of_tykind tykind
   | TyArrow (ty_lst, ret_ty, call_type) ->
-      (* "$ct_" ^ (string_of_call_type call_type) *)
       "$"
       ^ ExtString.String.join "$" (List.map string_of_typ ty_lst)
       ^ "$arrow$$"
@@ -2106,16 +2117,8 @@ let mangle_name (base : string) (type_args : typ list) : string =
   List.fold_left (fun acc typ -> acc ^ "_" ^ typ_to_symbol typ) base type_args
 ;;
 
-(* A deterministic, collision-free symbol, e.g. mangle_name "id" [i32] =
-   "id$i32". Must be injective on (base, args) and a legal LLVM symbol; escape
-   or encode TyArrow / TyApp. Used as both the new decl name and the call
-   target, and as the key into `requested`. *)
-
 let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution =
-  (* Every failure here is a compiler bug, not a user error: type checking
-     already proved that the method, the instance and its implementation exist. *)
   let ice msg = failwith (sprintf "Resolve method call failure: %s" msg) in
-  (* Stdlib-version independent List.take / List.drop *)
   let split_at n l =
     let rec go n acc l =
       match l with
@@ -2124,12 +2127,6 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
     in
     go n [] l
   in
-  (* ResolvedDecl for a DFun: bind the DFun's OWN generics, positionally, to
-     the method-level type args, on top of `subst`. The images are all
-     concrete types, and the two domains are disjoint (instance variables vs
-     method generics), so plain concatenation is already the composition you
-     want; compose_subst is only needed when an image mentions variables from
-     the other substitution's domain. *)
   let resolved_decl (decl : typed_tag decl) (method_args : typ list) (subst : typ subst) :
       mono_resolution =
     match decl with
@@ -2148,54 +2145,37 @@ let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution
          (String.concat ", " (List.map string_of_typ type_args)) );
   match find_method meth with
   | None -> ice (sprintf "method %s not found" meth)
-  | Some (cls, _) -> (
-      let class_args, method_args = split_at (List.length cls.class_params) type_args in
-      if List.length class_args <> List.length cls.class_params then
+  | Some (cls, _) ->
+      let class_arg_count = List.length cls.class_params in
+      let class_args, method_args = split_at class_arg_count type_args in
+      if List.length class_args <> class_arg_count then
         ice
           (sprintf "method %s of class %s needs %d class type argument(s), got %d" meth
-             cls.class_name (List.length cls.class_params) (List.length type_args) );
+             cls.class_name class_arg_count (List.length type_args) );
       let pred = {pred_class= cls.class_name; pred_args= class_args} in
-      match find_instance pred with
+      begin match find_instance pred with
       | None -> ice (sprintf "no instance %s" (string_of_pred pred))
-      | Some (inst, inst_subst) -> (
-        match Hashtbl.find_opt method_impl_table (inst.instance_id, meth) with
+      | Some (inst, inst_subst) ->
+        begin match Hashtbl.find_opt method_impl_table (inst.instance_id, meth) with
         | Some (ImplPrim1 op) -> ResolvedPrim1 op
         | Some (ImplPrim2 op) -> ResolvedPrim2 op
-        | Some (ImplDecl d) ->
-            (* instance variables |-> what the instance head matched, plus the
-                 method's own generics |-> method_args *)
-            resolved_decl d method_args inst_subst
-        | None -> (
-          (* the instance relies on the class default; its body is written
-                 over the CLASS parameters, so Self |-> the class args (the
-                 instance's own variables don't appear in it) *)
-          match Hashtbl.find_opt typed_default_method_table (cls.class_name, meth) with
+        | Some (ImplDecl d) -> resolved_decl d method_args inst_subst
+        | None ->
+          begin match Hashtbl.find_opt typed_default_method_table (cls.class_name, meth) with
           | Some d -> resolved_decl d method_args (List.combine cls.class_params class_args)
           | None ->
               ice
                 (sprintf "instance %s does not define %s and class %s has no default"
-                   inst.instance_id meth cls.class_name ) ) ) )
+                   inst.instance_id meth cls.class_name )
+          end
+        end
+      end
 ;;
-
-(* `type_args` are CONCRETE (no TyVar). Steps:
-   1. (cls, m) = find_method meth. Split type_args into the first
-      (List.length cls.class_params) class args and the remaining method args.
-   2. pred = {cls.class_name; class args}. (inst, s) = find_instance pred; it
-      must exist, because type checking proved it.
-   3. Look up method_impl_table (inst.instance_id, meth):
-        - ImplPrim1 / ImplPrim2 p  -> ResolvedPrim1 / ResolvedPrim2 p
-        - ImplDecl d -> ResolvedDecl (d, s extended with the d's own generics
-          |-> remaining method args, positionally).
-      If the instance does not define the method, use default_method_table
-      (cls.class_name, meth) with the substitution class_params |-> class args
-      (+ method args). A default body that calls other methods of Self gets
-      resolved again when it is itself monomorphised. *)
 
 let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : typed_tag decl =
   let sub = apply_subst_typ s in
   match d with
   | DFun (name, generic_binds, args, body, call_type, ret_typ, (loc, fun_typ)) ->
-      (* every type is substituted: the tags, binders, ETyApp arguments and the signature *)
       DFun
         ( new_name,
           [],
@@ -2207,99 +2187,13 @@ let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : t
   | _ -> failwith "Specialize decl failure: given non DFun"
 ;;
 
-(* Copy a DFun with: name = new_name, generics = [], arg and return type
-   annotations substituted, and body = apply_subst_expr s body. The result
-   has no type variables left. *)
-
-let rec monomorphize_expr (st : mono_state) (e : typed_tag expr) : typed_tag expr =
-  match e with
-  | EApp (ETyApp (EId (f_name, id_loc), tys, _), args, loc) -> (
-      List.iter
-        (fun typ ->
-          match typ with
-          | TyVar _ ->
-              raise
-                (InternalCompilerError
-                   (sprintf "Found TyVar in monomorphize_expr at <%s>"
-                      (string_of_sourcespan (fst loc)) ) )
-          | _ -> () )
-        tys;
-      let args = List.map (monomorphize_expr st) args in
-      let m = find_method f_name in
-      match m with
-      | Some (cls_info, method_info) -> (
-        match resolve_method_call f_name tys with
-        | ResolvedPrim1 p -> EPrim1 (p, List.nth args 0, loc)
-        | ResolvedPrim2 p -> EPrim2 (p, List.nth args 0, List.nth args 1, loc)
-        | ResolvedDecl (d, s) ->
-            let new_name = mangle_name (name_of_dfun d) tys in
-            if not (Hashtbl.mem st.requested new_name) then
-              Queue.add (new_name, tys) st.worklist
-            else
-              ();
-            EApp (EId (new_name, id_loc), args, loc) )
-      | None ->
-          (* f_name is a regular function *)
-          let new_name = mangle_name f_name tys in
-          if not (Hashtbl.mem st.requested new_name) then
-            Queue.add (f_name, tys) st.worklist
-          else
-            ();
-          EApp (EId (new_name, id_loc), args, loc) )
-  | EApp (closure, args, loc) ->
-      EApp (monomorphize_expr st closure, List.map (monomorphize_expr st) args, loc)
-  | ELet (bindings, body, loc) ->
-      let new_bindings =
-        List.map (fun (x, b, binding_loc) -> (x, monomorphize_expr st b, binding_loc)) bindings
-      in
-      ELet (new_bindings, monomorphize_expr st body, loc)
-  | EIf (cond, thn, els, loc) ->
-      EIf (monomorphize_expr st cond, monomorphize_expr st thn, monomorphize_expr st els, loc)
-  | EId _ | ELiteral _ -> e
-  | _ -> failwith "Unsupported expr found"
-;;
-
-(* Structural traversal. The interesting cases:
-   - EApp(ETyApp(EId f, tys, _), args, ct, loc), args monomorphised first:
-       if f is a class method: match resolve_method_call f tys with
-         | ResolvedPrim2 p -> EPrim2(p, a, b, loc)
-         | ResolvedPrim1 p -> EPrim1(p, a, loc)
-         | ResolvedDecl (d, s) -> name = mangle_name (decl name) tys; enqueue a
-           specialisation (d, s, name) unless already in `requested`;
-           EApp(EId(name, loc), args', FictolFunc, loc)
-       else (ordinary generic function): name = mangle_name f tys; enqueue
-         (f, tys); EApp(EId(name, loc), args', ct, loc).
-   - A bare ETyApp that is not directly applied (a generic function or method
-     used as a first-class value) is unsupported today (no closures): raise
-     Unsupported.
-   - If a TyVar is still present in tys, raise an internal compiler error. *)
 let monomorphize (p : typed_tag program) : typed_tag program =
   match p with
   | Program (decls, tag) ->
       let _, _, funs = partition_decls decls in
-      (* Only generic functions need to be kept around as templates.  The
-         non-generic functions are the roots of the monomorphisation graph. *)
-      (* let _ =
-        List.filter
-          (fun d ->
-            match d with
-            | DFun (_, generics, _, _, _, _, _) -> generics <> []
-            | _ -> false )
-          funs
-      in *)
-      let nongeneric_funs =
-        List.filter
-          (fun d ->
-            match d with
-            | DFun (_, generics, _, _, _, _, _) -> generics = []
-            | _ -> false )
-          funs
-      in
-      (* Look up an original DFun by the name used in a worklist entry.
-         Normally this is just the original function name.  Method
-         specialisations are queued by monomorphize_expr using their already
-         mangled name, so also recognize that form. *)
-      let find_template name tys =
+      let st = {requested= Hashtbl.create 32; worklist= Queue.create (); emitted= []} in
+      (* Find a top-level generic function. *)
+      let find_function_template name =
         match
           List.find_opt
             (fun d ->
@@ -2309,61 +2203,100 @@ let monomorphize (p : typed_tag program) : typed_tag program =
             funs
         with
         | Some d -> d
-        | None -> (
-          match
-            List.find_opt
-              (fun d ->
-                match d with
-                | DFun (dname, _, _, _, _, _, _) -> mangle_name dname tys = name
-                | _ -> false )
-              funs
-          with
-          | Some d -> d
-          | None -> failwith (sprintf "Monomorphize failure: could not find function %s" name) )
+        | None -> failwith (sprintf "Monomorphize failure: could not find function %s" name)
       in
-      let st = {requested= Hashtbl.create 32; worklist= Queue.create (); emitted= []} in
-      (* Emit a non-generic root.  Its body may contain calls to generic
-         functions, which will seed the worklist. *)
+      let enqueue (template : typed_tag decl) (subst : typ subst) (new_name : string) =
+        if not (Hashtbl.mem st.requested new_name) then begin
+          Hashtbl.add st.requested new_name ();
+          Queue.add {template; subst; new_name} st.worklist
+        end
+      in
+      let rec monomorphize_expr (e : typed_tag expr) : typed_tag expr =
+        match e with
+        (* Generic function/method call. *)
+        | EApp (ETyApp (EId (f_name, id_loc), tys, _), args, loc) ->
+            (* Every type argument must be concrete by this point. *)
+            List.iter
+              (fun typ ->
+                if not (StringSet.is_empty (ftv_typ typ)) then
+                  raise
+                    (InternalCompilerError
+                       (sprintf "Found TyVar in monomorphize_expr: %s" (string_of_typ typ)) ) )
+              tys;
+            let args = List.map monomorphize_expr args in
+            begin match find_method f_name with
+            (* ---------------------------------------------------------
+                 Type-class method
+                 --------------------------------------------------------- *)
+            | Some (_, _) ->
+              begin match resolve_method_call f_name tys with
+              | ResolvedPrim1 op -> EPrim1 (op, List.nth args 0, loc)
+              | ResolvedPrim2 op -> EPrim2 (op, List.nth args 0, List.nth args 1, loc)
+              | ResolvedDecl (d, subst) ->
+                  let new_name = mangle_name (name_of_dfun d) tys in
+                  (* DO NOT try to find `d` in `funs`.
+                           `d` may live inside a DInstance. *)
+                  enqueue d subst new_name;
+                  EApp (EId (new_name, id_loc), args, loc)
+              end
+            (* ---------------------------------------------------------
+                 Ordinary generic function
+                 --------------------------------------------------------- *)
+            | None ->
+                let template = find_function_template f_name in
+                let generic_binds =
+                  match template with
+                  | DFun (_, gs, _, _, _, _, _) -> gs
+                  | _ -> failwith "Monomorphize failure: template is not a DFun"
+                in
+                let generic_names = List.map name_of_generic_bind generic_binds in
+                if List.length generic_names <> List.length tys then
+                  failwith
+                    (sprintf "Monomorphize failure: %s expects %d type argument(s), got %d" f_name
+                       (List.length generic_names) (List.length tys) );
+                let subst = List.combine generic_names tys in
+                let new_name = mangle_name f_name tys in
+                enqueue template subst new_name;
+                EApp (EId (new_name, id_loc), args, loc)
+            end
+        | EApp (closure, args, loc) ->
+            EApp (monomorphize_expr closure, List.map monomorphize_expr args, loc)
+        | ELet (bindings, body, loc) ->
+            let new_bindings =
+              List.map (fun (x, b, binding_loc) -> (x, monomorphize_expr b, binding_loc)) bindings
+            in
+            ELet (new_bindings, monomorphize_expr body, loc)
+        | EIf (cond, thn, els, loc) ->
+            EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
+        | EId _ | ELiteral _ -> e
+        | _ -> failwith "Monomorphize failure: unsupported expression"
+      in
+      (* Non-generic functions are roots of the specialization graph.
+         Generic functions themselves are templates and aren't emitted
+         unless something actually calls them. *)
       let roots =
-        List.map
+        List.filter_map
           (fun d ->
             match d with
             | DFun (name, [], args, body, call_type, ret_typ, loc) ->
-                let body' = monomorphize_expr st body in
-                DFun (name, [], args, body', call_type, ret_typ, loc)
-            | _ -> failwith "Monomorphize failure: expected non-generic DFun" )
-          nongeneric_funs
+                let new_body = monomorphize_expr body in
+                Some (DFun (name, [], args, new_body, call_type, ret_typ, loc))
+            | DFun (_, _generic_binds, _, _, _, _, _) -> None
+            | _ -> None )
+          funs
       in
-      (* Drain all requested specialisations.  `requested` is keyed by the
-         final emitted symbol, so recursive and mutually recursive calls do
-         not generate duplicates. *)
+      (* Generate requested specializations. *)
       while not (Queue.is_empty st.worklist) do
-        let queued_name, tys = Queue.take st.worklist in
-        let template = find_template queued_name tys in
-        let template_name, generics =
-          match template with
-          | DFun (name, generics, _, _, _, _, _) -> (name, generics)
-          | _ -> failwith "Monomorphize failure: template is not a DFun"
-        in
-        let new_name = mangle_name template_name tys in
-        if not (Hashtbl.mem st.requested new_name) then begin
-          Hashtbl.add st.requested new_name ();
-          let generic_names = List.map name_of_generic_bind generics in
-          if List.length generic_names <> List.length tys then
-            failwith
-              (sprintf "Monomorphize failure: %s expects %d type argument(s), got %d" template_name
-                 (List.length generic_names) (List.length tys) );
-          let subst : typ subst = List.combine generic_names tys in
-          let specialised = specialize_decl template subst new_name in
-          match specialised with
-          | DFun (name, generics, args, body, call_type, ret_typ, loc) ->
-              let body' = monomorphize_expr st body in
-              st.emitted <-
-                DFun (name, generics, args, body', call_type, ret_typ, loc) :: st.emitted
-          | _ -> failwith "Monomorphize failure: specialization was not a DFun"
-        end
+        let request = Queue.take st.worklist in
+        let specialised = specialize_decl request.template request.subst request.new_name in
+        match specialised with
+        | DFun (name, generics, args, body, call_type, ret_typ, loc) ->
+            let new_body = monomorphize_expr body in
+            st.emitted <-
+              DFun (name, generics, args, new_body, call_type, ret_typ, loc) :: st.emitted
+        | _ -> failwith "Monomorphize failure: specialization was not a DFun"
       done;
-      Program (roots @ st.emitted, tag)
+      Program (roots @ List.rev st.emitted, tag)
 ;;
 
 let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
@@ -2562,9 +2495,7 @@ let anf (p : (tag * typ) program) : typ aprogram =
         let new_func, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
         ( ImmId (tmp, typ),
-          func_setup
-          @ List.concat new_setup
-          @ [BLet (tmp, typ, CApp (new_func, new_args, typ))] )
+          func_setup @ List.concat new_setup @ [BLet (tmp, typ, CApp (new_func, new_args, typ))] )
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, (tag, typ)) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
@@ -2631,11 +2562,7 @@ let tag_of_immexpr (e : 'a immexpr) : 'a =
 
 let tag_of_cexpr (c : 'a cexpr) : 'a =
   match c with
-  | CIf (_, _, _, tag)
-   |CPrim1 (_, _, tag)
-   |CPrim2 (_, _, _, tag)
-   |CApp (_, _, tag) ->
-      tag
+  | CIf (_, _, _, tag) | CPrim1 (_, _, tag) | CPrim2 (_, _, _, tag) | CApp (_, _, tag) -> tag
   | CImmExpr e -> tag_of_immexpr e
 ;;
 
@@ -2645,9 +2572,15 @@ let tag_of_aexpr (a : 'a aexpr) : 'a =
   | ACExpr c -> tag_of_cexpr c
 ;;
 
-let tag_of_adecl (d : 'a adecl) : 'a = match d with AFun (_, _, _, _, _, tag) -> tag
+let tag_of_adecl (d : 'a adecl) : 'a =
+  match d with
+  | AFun (_, _, _, _, _, tag) -> tag
+;;
 
-let tag_of_aprogram (p : 'a aprogram) : 'a = match p with AProgram (_, tag) -> tag
+let tag_of_aprogram (p : 'a aprogram) : 'a =
+  match p with
+  | AProgram (_, tag) -> tag
+;;
 
 let tag_of_abind ((_, tag) : 'a abind) : 'a = tag
 
@@ -2661,75 +2594,83 @@ let atag_prog p =
 ;;
 
 let context = global_context ()
+
 let the_module = create_module context "my program"
+
 let builder = builder context
 
 let typ_to_llvm_typ typ =
   match typ with
-  | TyCon (tykind) -> (
+  | TyCon tykind -> (
     match tykind with
-    | Int(I8) -> i8_type context
-    | Int(I16) -> i16_type context
-    | Int(I32) -> i32_type context
-    | Int(I64) -> i64_type context
+    | Int I8 -> i8_type context
+    | Int I16 -> i16_type context
+    | Int I32 -> i32_type context
+    | Int I64 -> i64_type context
     | Bool -> i1_type context
-    | _ -> failwith "Typ to llvm typ failure: unsupported tykind"
-  )
+    | _ -> failwith "Typ to llvm typ failure: unsupported tykind" )
   | _ -> failwith "cannot convert non TyCon to llvm"
+;;
 
 let get_tycon_tykind typ =
   match typ with
-  | TyCon (tykind) -> tykind
+  | TyCon tykind -> tykind
   | _ -> failwith "Cannot get tykind of non tycon"
+;;
 
 let typ_to_llvm_signed typ =
   match typ with
-  | TyCon (Int (_)) -> true
+  | TyCon (Int _) -> true
   | _ -> failwith "non int cannot be signed or unsigned Unsupported"
+;;
 
 let typ_to_llvm_fn_type typ =
   match typ with
   | TyArrow (args, ret, call_type) ->
       function_type (typ_to_llvm_typ ret) (Array.of_list (List.map typ_to_llvm_typ args))
   | _ -> failwith "expected a function type"
+;;
 
 let gensym_compile =
-    let next = ref 0 in
-    fun name ->
-      next := !next + 1;
-      sprintf "%s_%d" name !next
+  let next = ref 0 in
+  fun name ->
+    next := !next + 1;
+    sprintf "%s_%d" name !next
 ;;
 
 let call_type_to_llvm_call_conv ct =
   match ct with
-  | Extern("C") -> Llvm.CallConv.c
+  | Extern "C" -> Llvm.CallConv.c
   | _ -> 18 (* tailcc *)
-  
+;;
+
 let rec compile_afun env (f : 'a adecl) : unit =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
-    let llvm_fun = find env name in
-    let args_env = (List.combine (List.map fst binds) (Array.to_list (params llvm_fun))) in
-    let bb = append_block context "entry" llvm_fun in
-    position_at_end bb builder;
-    (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
-    (match call_type with
-    | Extern(_) -> 
-      let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
-      let _ = build_ret compiled_body builder in ()
-    | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun);
-    Llvm_analysis.assert_valid_function llvm_fun
+      let llvm_fun = find env name in
+      let args_env = List.combine (List.map fst binds) (Array.to_list (params llvm_fun)) in
+      let bb = append_block context "entry" llvm_fun in
+      position_at_end bb builder;
+      (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
+      ( match call_type with
+      | Extern _ ->
+          let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
+          let _ = build_ret compiled_body builder in
+          ()
+      | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun );
+      Llvm_analysis.assert_valid_function llvm_fun
 
 and forward_declare_func (f : 'a adecl) : string * llvalue =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
-    let llvm_args =
-      Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ b_typ) binds) in
-    (* the real return type, not void *)
-    let func_type = function_type (typ_to_llvm_typ ret_typ) llvm_args in
-    let llvm_fun = declare_function name func_type the_module in
-    Llvm.set_function_call_conv (call_type_to_llvm_call_conv call_type) llvm_fun;
-    (name, llvm_fun)
+      let llvm_args =
+        Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ b_typ) binds)
+      in
+      (* the real return type, not void *)
+      let func_type = function_type (typ_to_llvm_typ ret_typ) llvm_args in
+      let llvm_fun = declare_function name func_type the_module in
+      Llvm.set_function_call_conv (call_type_to_llvm_call_conv call_type) llvm_fun;
+      (name, llvm_fun)
 
 (* ---------- non-tail position: produces a value ---------- *)
 
@@ -2737,45 +2678,46 @@ and compile_aexpr env (e : 'a aexpr) llvm_fun : llvalue =
   match e with
   | ACExpr c -> compile_cexpr env c llvm_fun
   | ALet (name, bound, body, _) ->
-    let v = compile_cexpr env bound llvm_fun in
-    compile_aexpr ((name, v) :: env) body llvm_fun
+      let v = compile_cexpr env bound llvm_fun in
+      compile_aexpr ((name, v) :: env) body llvm_fun
   | ASeq (first, rest, _) ->
-    let _ = compile_cexpr env first llvm_fun in
-    compile_aexpr env rest llvm_fun
+      let _ = compile_cexpr env first llvm_fun in
+      compile_aexpr env rest llvm_fun
 
 and compile_cexpr env (c : 'a cexpr) llvm_fun : llvalue =
   match c with
   | CImmExpr imm -> compile_immexpr env imm
   | CPrim2 (op, left, right, (_, typ)) ->
-    let l = compile_immexpr env left in
-    let r = compile_immexpr env right in
-    let (_, ltyp) = tag_of_immexpr left in
-    let (_, rtyp) = tag_of_immexpr right in
-    (prim2_to_llvm_op op ltyp rtyp) l r (gensym_compile "cprim2") builder
+      let l = compile_immexpr env left in
+      let r = compile_immexpr env right in
+      let _, ltyp = tag_of_immexpr left in
+      let _, rtyp = tag_of_immexpr right in
+      (prim2_to_llvm_op op ltyp rtyp) l r (gensym_compile "cprim2") builder
   | CPrim1 (op, body, (_, typ)) ->
-    let b = compile_immexpr env body in
-    (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
+      let b = compile_immexpr env body in
+      (prim1_to_llvm_op op typ) b (gensym_compile "cprim1") builder
   | CApp (closure, args, _) ->
-    let (_, closure_typ) = tag_of_immexpr closure in
-    let call_type = call_type_of_arrow_typ closure_typ in
-    compile_call env closure args call_type
+      let _, closure_typ = tag_of_immexpr closure in
+      let call_type = call_type_of_arrow_typ closure_typ in
+      compile_call env closure args call_type
   | CIf (cond, thn, els, _) ->
-    let cond_imm = compile_immexpr env cond in
-    let if_name = gensym_compile "if" in
-    let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
-    let els_bb = append_block context (if_name ^ "_else") llvm_fun in
-    let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
-    let _ = build_cond_br cond_imm thn_bb els_bb builder in
-    position_at_end thn_bb builder;
-    let thn_val = compile_aexpr env thn llvm_fun in
-    let thn_end = insertion_block builder in  (* the block the branch ENDED in *)
-    let _ = build_br merge_bb builder in
-    position_at_end els_bb builder;
-    let els_val = compile_aexpr env els llvm_fun in
-    let els_end = insertion_block builder in
-    let _ = build_br merge_bb builder in
-    position_at_end merge_bb builder;
-    build_phi [(thn_val, thn_end); (els_val, els_end)] (if_name ^ "_result") builder
+      let cond_imm = compile_immexpr env cond in
+      let if_name = gensym_compile "if" in
+      let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
+      let els_bb = append_block context (if_name ^ "_else") llvm_fun in
+      let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
+      let _ = build_cond_br cond_imm thn_bb els_bb builder in
+      position_at_end thn_bb builder;
+      let thn_val = compile_aexpr env thn llvm_fun in
+      let thn_end = insertion_block builder in
+      (* the block the branch ENDED in *)
+      let _ = build_br merge_bb builder in
+      position_at_end els_bb builder;
+      let els_val = compile_aexpr env els llvm_fun in
+      let els_end = insertion_block builder in
+      let _ = build_br merge_bb builder in
+      position_at_end merge_bb builder;
+      build_phi [(thn_val, thn_end); (els_val, els_end)] (if_name ^ "_result") builder
 
 (* ---------- tail position: emits `ret` on every path, returns unit ---------- *)
 
@@ -2783,44 +2725,41 @@ and compile_aexpr_tail env (e : 'a aexpr) llvm_fun : unit =
   match e with
   | ACExpr c -> compile_cexpr_tail env c llvm_fun
   | ALet (name, bound, body, _) ->
-    let v = compile_cexpr env bound llvm_fun in   (* the bound value is NOT in tail position *)
-    compile_aexpr_tail ((name, v) :: env) body llvm_fun
+      let v = compile_cexpr env bound llvm_fun in
+      (* the bound value is NOT in tail position *)
+      compile_aexpr_tail ((name, v) :: env) body llvm_fun
   | ASeq (first, rest, _) ->
-    let _ = compile_cexpr env first llvm_fun in
-    compile_aexpr_tail env rest llvm_fun
+      let _ = compile_cexpr env first llvm_fun in
+      compile_aexpr_tail env rest llvm_fun
 
 and compile_cexpr_tail env (c : 'a cexpr) llvm_fun : unit =
   match c with
   | CApp (closure, args, _) ->
-    let (_, closure_typ) = tag_of_immexpr closure in
-    let call_type = call_type_of_arrow_typ closure_typ in
-    let call = compile_call env closure args call_type in
-    (* set_musttail call; *)
-    (
-      match call_type with
-      | Extern(_) -> ()
-      | _ -> 
-        Llvm.set_tail_call true call;
-        set_musttail call
-    );
-    (* nothing may sit between the call and this ret *)
-    let _ = build_ret call builder in
-    ()
+      let _, closure_typ = tag_of_immexpr closure in
+      let call_type = call_type_of_arrow_typ closure_typ in
+      let call = compile_call env closure args call_type in
+      (* set_musttail call; *)
+      ( match call_type with
+      | Extern _ -> ()
+      | _ -> Llvm.set_tail_call true call; set_musttail call );
+      (* nothing may sit between the call and this ret *)
+      let _ = build_ret call builder in
+      ()
   | CIf (cond, thn, els, _) ->
-    let cond_imm = compile_immexpr env cond in
-    let if_name = gensym_compile "if" in
-    let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
-    let els_bb = append_block context (if_name ^ "_else") llvm_fun in
-    let _ = build_cond_br cond_imm thn_bb els_bb builder in
-    (* no merge block: each branch ends in its own ret *)
-    position_at_end thn_bb builder;
-    compile_aexpr_tail env thn llvm_fun;
-    position_at_end els_bb builder;
-    compile_aexpr_tail env els llvm_fun
+      let cond_imm = compile_immexpr env cond in
+      let if_name = gensym_compile "if" in
+      let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
+      let els_bb = append_block context (if_name ^ "_else") llvm_fun in
+      let _ = build_cond_br cond_imm thn_bb els_bb builder in
+      (* no merge block: each branch ends in its own ret *)
+      position_at_end thn_bb builder;
+      compile_aexpr_tail env thn llvm_fun;
+      position_at_end els_bb builder;
+      compile_aexpr_tail env els llvm_fun
   | CImmExpr _ | CPrim1 _ | CPrim2 _ ->
-    let v = compile_cexpr env c llvm_fun in
-    let _ = build_ret v builder in
-    ()
+      let v = compile_cexpr env c llvm_fun in
+      let _ = build_ret v builder in
+      ()
 
 (* shared by both modes; only the tail version sets the tail marker *)
 and compile_call env closure args call_type : llvalue =
@@ -2831,43 +2770,50 @@ and compile_call env closure args call_type : llvalue =
   let call = build_call fn_type callee llvm_args (gensym_compile "app") builder in
   Llvm.set_instruction_call_conv (call_type_to_llvm_call_conv call_type) call;
   call
-and compile_immexpr env (e: 'a immexpr) : llvalue =
+
+and compile_immexpr env (e : 'a immexpr) : llvalue =
   match e with
-  | ImmId (name, (tag, typ)) -> 
-    find env name
-  | ImmLiteral (LitInt(n, suffix), (tag, typ)) -> const_of_int64 (typ_to_llvm_typ typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
-  | ImmLiteral (LitBool(true), (tag, typ)) -> const_int (i1_type context) 1
-  | ImmLiteral (LitBool(false), (tag, typ)) -> const_int (i1_type context) 0
+  | ImmId (name, (tag, typ)) -> find env name
+  | ImmLiteral (LitInt (n, suffix), (tag, typ)) ->
+      const_of_int64 (typ_to_llvm_typ typ) (Uint128.to_int64 n) (typ_to_llvm_signed typ)
+  | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
+  | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
 
 and prim2_to_llvm_op op ltyp rtyp =
-  let ltykind = (get_tycon_tykind ltyp) in
-  let rtykind = (get_tycon_tykind rtyp) in
-  match op, ltykind, rtykind with
-  | Plus, Int(_), Int(_) -> build_add
-  | Minus, Int(_), Int(_) -> build_sub
-  | Times, Int(_), Int(_) -> build_mul
-  | Divide, Int(_), Int(_) -> build_sdiv
-  | Eq, Int(_), Int(_) | Eq, Bool, Bool -> build_icmp Icmp.Eq
-  | Greater, Int(_), Int(_) -> build_icmp Icmp.Sgt
-  | GreaterEq, Int(_), Int(_) -> build_icmp Icmp.Sge
-  | Less, Int(_), Int(_) -> build_icmp Icmp.Slt
-  | LessEq, Int(_), Int(_) -> build_icmp Icmp.Sle
-  | _ -> failwith (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op) (string_of_typ ltyp) (string_of_typ rtyp))
+  let ltykind = get_tycon_tykind ltyp in
+  let rtykind = get_tycon_tykind rtyp in
+  match (op, ltykind, rtykind) with
+  | Plus, Int _, Int _ -> build_add
+  | Minus, Int _, Int _ -> build_sub
+  | Times, Int _, Int _ -> build_mul
+  | Divide, Int _, Int _ -> build_sdiv
+  | Eq, Int _, Int _ | Eq, Bool, Bool -> build_icmp Icmp.Eq
+  | Greater, Int _, Int _ -> build_icmp Icmp.Sgt
+  | GreaterEq, Int _, Int _ -> build_icmp Icmp.Sge
+  | Less, Int _, Int _ -> build_icmp Icmp.Slt
+  | LessEq, Int _, Int _ -> build_icmp Icmp.Sle
+  | _ ->
+      failwith
+        (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op)
+           (string_of_typ ltyp) (string_of_typ rtyp) )
+
 and prim1_to_llvm_op op typ =
-  let tykind = (get_tycon_tykind typ) in
-  match op, tykind with
+  let tykind = get_tycon_tykind typ in
+  match (op, tykind) with
   | Neg, _ -> build_neg
   | Not, _ -> build_not
-  | _ -> failwith (sprintf "unsupported prim2 to llvm op %s for typ %s" (string_of_op1 op) (string_of_typ typ))
+  | _ ->
+      failwith
+        (sprintf "unsupported prim2 to llvm op %s for typ %s" (string_of_op1 op) (string_of_typ typ))
+;;
+
 let compile_prog (prog : (tag * typ) aprogram) : string =
   match prog with
   | AProgram (decls, (tag, typ)) ->
-    let llvm_funs_env = List.map forward_declare_func decls in
-    List.iter
-    (compile_afun llvm_funs_env)
-    decls;
-    string_of_llmodule the_module
-
+      let llvm_funs_env = List.map forward_declare_func decls in
+      List.iter (compile_afun llvm_funs_env) decls;
+      string_of_llmodule the_module
+;;
 
 let run_if should_run f =
   if should_run then

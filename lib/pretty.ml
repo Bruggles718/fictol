@@ -300,11 +300,7 @@ let rec string_of_aexpr_with (depth : int) (print_a : 'a -> string) (e : 'a aexp
 and string_of_adecl_with depth print_a decl =
   match decl with
   | AFun (name, args, body, call_type, ret_typ, a) ->
-      let binds =
-        List.map
-          (fun (b_name, b_a) -> (sprintf "%s%s" b_name (print_a b_a)))
-          args
-      in
+      let binds = List.map (fun (b_name, b_a) -> sprintf "%s%s" b_name (print_a b_a)) args in
       sprintf "(def %s(%s)%s:\n  %s)%s" name
         (ExtString.String.join ", " binds)
         (let typ_str = string_of_typ ret_typ in

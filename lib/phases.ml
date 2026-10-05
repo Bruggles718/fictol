@@ -158,7 +158,10 @@ let print_trace (trace : phase list) : string list =
         string_of_program_with 1000 (fun (tag, typ) -> sprintf "@%s" (string_of_int tag)) p
     (* | AddedNatives p -> string_of_program p *)
     (* | Tagged p -> string_of_program_with 1000 (fun tag -> sprintf "@%d" tag) p *)
-    | ANFed p -> string_of_aprogram_with 1000 (fun (tag, typ) -> sprintf "@%s:%s" (string_of_int tag) (string_of_typ typ)) p
+    | ANFed p ->
+        string_of_aprogram_with 1000
+          (fun (tag, typ) -> sprintf "@%s:%s" (string_of_int tag) (string_of_typ typ))
+          p
     (* | Located (p, e) ->
         string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
         ^ "\nEnvs:\n"
