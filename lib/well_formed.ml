@@ -1,0 +1,152 @@
+open Printf
+open Pretty
+open Phases
+open Exprs
+open Types
+open Errors
+open Lexing
+open Llvm
+open Stdint
+open Fictol_stubs
+
+open Compiler_common
+
+let wf_class_decl (d : sourcespan decl) : exn list = []
+(* wf for DClass: duplicate method names within the class, duplicate params,
+   superclass / bound classes exist (UnknownClass), default bodies are
+   well-formed expressions in a scope containing the method args. *)
+
+let wf_instance_decl (d : sourcespan decl) : exn list = []
+(* wf for DInstance: the class exists with the right arity, the methods are
+   well-formed DFuns (reuse wf_D), and the instance generics are distinct. *)
+
+let is_well_formed (p : sourcespan program) : sourcespan program fallible =
+  let rec string_list_from_bind bind =
+    match bind with
+    | BName (name, _, _, tag) -> [(name, tag)]
+    (* | BTuple (binds, _) -> List.concat (List.map string_list_from_bind binds) *)
+    | BBlank _ -> []
+  and binding_errs (scope_env, shadow_env, err_lst) x body_err =
+    let adding_to_env = string_list_from_bind x in
+    (* try
+      let dups =
+        let names = adding_to_env in
+        List.map
+          (fun (s, loc) ->
+            let existing = List.assoc s shadow_env in
+            DuplicateId (s, loc, existing) )
+          names
+      in *)
+    (* (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ dups @ body_err) *)
+    (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err)
+  (* with Not_found -> (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err) *)
+  and blank_typ_in_bind_errs bind =
+    match bind with
+    | BName (name, _, typ, loc) -> (
+      match typ with
+      | TyBlank _ -> [NoTypeAnnotation (name, loc)]
+      | _ -> [] )
+    | _ -> [NotYetImplemented "unsupported binding type"]
+  and wf_E_list e_lst env =
+    let results = List.map (fun e -> wf_E e env) e_lst in
+    List.fold_left List.append [] results
+  and wf_E e env =
+    match e with
+    | ELiteral (LitBool _, _) -> []
+    | ELiteral (LitInt (n, _), loc) ->
+        if
+          n > Uint64.max_int
+        then
+          [Overflow (n, loc)]
+        else
+          []
+    | EId (x, loc) -> (
+      try
+        ignore (List.assoc x env);
+        []
+      with Not_found -> [UnboundId (x, loc)] )
+    | EPrim1 (_, e, _) -> wf_E e env
+    | EPrim2 (_, l, r, _) -> wf_E_list [l; r] env
+    | EIf (c, t, f, _) -> wf_E_list [c; t; f] env
+    | ELet (binds, body, _) ->
+        let env2, _, err_lst =
+          List.fold_left
+            (fun (scope_env, shadow_env, err_lst) (x, e, _) ->
+              binding_errs (scope_env, shadow_env, err_lst) x (wf_E e scope_env) )
+            (env, [], []) binds
+        in
+        err_lst @ wf_E body env2
+    (* | EApp (_, args, Native, _) -> wf_E_list args env *)
+    | EApp (EId (name, id_loc), args, loc) ->
+        let fun_err = wf_E (EId (name, id_loc)) env in
+        fun_err @ wf_E_list args env
+    | EApp (closure, args, loc) ->
+        (* let fun_err = wf_E closure env in
+        fun_err @ wf_E_list args env *)
+        [Unsupported ("Calling closures is not yet supported", loc)]
+    | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env
+    | ETyApp (e, _, _) -> wf_E e env
+  and wf_D d env (* other parameters may be needed here *) =
+    match d with
+    | DFun (_, generics, args, body, ct, typ, _) ->
+        let env2, _, args_err_lst =
+          List.fold_left
+            (fun (scope_env, shadow_env, args_err_lst) (x, loc) ->
+              try
+                let existing = List.assoc x shadow_env in
+                let err = DuplicateId (x, loc, existing) in
+                ((x, loc) :: scope_env, (x, loc) :: shadow_env, args_err_lst @ [err])
+              with Not_found -> ((x, loc) :: scope_env, (x, loc) :: shadow_env, args_err_lst) )
+            (env, [], [])
+            (List.concat (List.map string_list_from_bind args))
+        in
+        let typ_err_lst = List.map blank_typ_in_bind_errs args |> List.concat in
+        let err_lst = args_err_lst @ typ_err_lst @ wf_E body env2 in
+        err_lst
+    | DClass _ | DInstance _ -> []
+  and wf_D_list decls env =
+    let full_env = get_new_env decls in
+    let method_scope = get_method_names decls in
+    List.concat
+      (List.mapi
+         (fun i d ->
+           match d with
+           | DFun (name, generics, _, _, ct, typ, loc) -> (
+               (* every function name except this decl's own *)
+               let others = List.filteri (fun j _ -> j <> i) decls in
+               let new_env = get_new_env others @ method_scope in
+               let err_lst = wf_D d (full_env @ method_scope @ env) in
+               try
+                 let existing = List.assoc name new_env in
+                 let err = DuplicateFun (name, loc, existing) in
+                 [err] @ err_lst
+               with Not_found -> err_lst )
+           | DClass _ -> wf_class_decl d
+           | DInstance _ -> wf_instance_decl d )
+         decls )
+  and get_new_env decls =
+    match decls with
+    | DFun (name, generics, _, _, ct, typ, loc) :: rest -> (name, loc) :: get_new_env rest
+    | _ :: rest -> get_new_env rest
+    | [] -> []
+  and get_method_names decls =
+    (* class methods are global functions, so they are in scope everywhere *)
+    List.concat_map
+      (fun d ->
+        match d with
+        | DClass (_, _, _, sigs, _) -> List.map (fun s -> (s.ms_name, s.ms_span)) sigs
+        | _ -> [] )
+      decls
+  in
+  match p with
+  | Program (decls, loc) -> (
+      let rec helpP decls err_lst =
+        (* let env = get_new_env decls in *)
+        wf_D_list decls [] @ err_lst
+      in
+      let err_lst = helpP decls [] in
+      match err_lst with
+      | [] -> Ok p
+      | _ -> Error err_lst )
+;;
+
