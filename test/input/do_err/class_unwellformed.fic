@@ -1,0 +1,7 @@
+typeclass TestClass<Self>:
+    def egg(x: Self) -> Self
+    and def egg(x: Self) -> Self
+    and def add(a: Self, b: Self) -> Self
+
+extern "C" def test_entry() -> i32:
+    0

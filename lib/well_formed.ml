@@ -164,17 +164,18 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | _ :: rest -> get_new_env rest
     | [] -> []
   and get_dup_class_errs decls =
-    let existing_method_names = Hashtbl.create 8 in
+    let existing_class_names = Hashtbl.create 8 in
     List.concat (
       List.map
       (fun d ->
         match d with
         | DClass (name, _, _, _, loc) ->
-          if Hashtbl.mem existing_method_names name then
-            let other_loc = Hashtbl.find existing_method_names name in
+          if Hashtbl.mem existing_class_names name then
+            let other_loc = Hashtbl.find existing_class_names name in
             [DuplicateFun (name, loc, other_loc)]
           else
-            []
+            (Hashtbl.replace existing_class_names name loc;
+            [])
         | _ -> [] )
       decls
     )
@@ -192,7 +193,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 let other_loc = Hashtbl.find existing_method_names s.ms_name in
                 [DuplicateFun (s.ms_name, s.ms_span, other_loc)]
               else
-                []
+                (Hashtbl.replace existing_method_names s.ms_name s.ms_span;
+                [])
               in
             (errs, (s.ms_name, s.ms_span))) 
           sigs

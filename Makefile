@@ -12,12 +12,9 @@ endif
 
 build:
 	dune build
-	cp ./_build/default/$(EXE_DIR)/$(EXE).exe main
 
 test:
 	dune build
-	mv ./_build/default/$(TEST_DIR)/$(TEST_EXE).exe test_fictol
-
 
 
 test/output/%.run: test/output/%.o driver.c 
@@ -78,4 +75,3 @@ clean:
 	rm -rf test/output/*.o test/output/*.ll test/output/*.dSYM test/output/*.run *.log *.o
 	rm -rf test/output/*/*.o test/output/*/*.ll test/output/*/*.dSYM test/output/*/*.run
 	rm -rf fun/*.o
-	rm -f ./main ./test_fictol
