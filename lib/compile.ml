@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 open Well_formed
 open Desugar
@@ -25,7 +24,8 @@ let run_if should_run f =
     no_op_phase
 ;;
 
-let compile_to_string (module_name : string) (prog : sourcespan program pipeline) : string pipeline =
+let compile_to_string (module_name : string) (prog : sourcespan program pipeline) : string pipeline
+    =
   let context = global_context () in
   let the_module = create_module context module_name in
   let builder = builder context in

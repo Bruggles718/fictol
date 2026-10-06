@@ -125,7 +125,7 @@ let compile_string_to_string
   |> add_phase source (fun x -> x)
   (* |> add_phase preprocessed preprocess *)
   |> add_err_phase parsed (fun input -> try Ok (parse_string name input) with err -> Error [err])
-  |> (compile_to_string name)
+  |> compile_to_string name
 ;;
 
 let compile_file_to_string
@@ -227,12 +227,12 @@ let run_asm
   result
 ;;
 
-let run_llvm 
-  (llvm_string : string) 
-  (out : string) 
-  (runner : string -> string list -> string -> (string, string) result)
-  args
-  (std_input : string) =
+let run_llvm
+    (llvm_string : string)
+    (out : string)
+    (runner : string -> string list -> string -> (string, string) result)
+    args
+    (std_input : string) =
   let outfile = open_out (out ^ ".ll") in
   fprintf outfile "%s" llvm_string;
   close_out outfile;
@@ -259,7 +259,7 @@ let run_llvm
   List.iter close [bstdout; bstderr; bstdin];
   List.iter unlink [bstdout_name; bstderr_name];
   result
-
+;;
 
 let run p out runner args std_input =
   let maybe_ll_string = compile_to_string out (Ok (p, [])) in
@@ -394,11 +394,15 @@ let test_err
 ;;
 
 let test_run_input filename ?(args = []) expected test_ctxt =
-  test_run ~args ~std_input:"" (string_of_file ("test/input/" ^ filename)) filename expected test_ctxt
+  test_run ~args ~std_input:""
+    (string_of_file ("test/input/" ^ filename))
+    filename expected test_ctxt
 ;;
 
 let test_err_input filename ?(args = []) expected test_ctxt =
-  test_err ~args ~std_input:"" (string_of_file ("test/input/" ^ filename)) filename expected test_ctxt
+  test_err ~args ~std_input:""
+    (string_of_file ("test/input/" ^ filename))
+    filename expected test_ctxt
 ;;
 
 let chomp str =
@@ -547,8 +551,11 @@ let input_file_test_suite () =
          "do_err"
          >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".fic");
          "dont_pass"
-         >::: List.map (fun f -> f >:: test_doesnt_run f) (safe_readdir "test/input/dont_pass" ".fic");
+         >::: List.map
+                (fun f -> f >:: test_doesnt_run f)
+                (safe_readdir "test/input/dont_pass" ".fic");
          "dont_err"
-         >::: List.map (fun f -> f >:: test_doesnt_err f) (safe_readdir "test/input/dont_err" ".fic")
-       ]
+         >::: List.map
+                (fun f -> f >:: test_doesnt_err f)
+                (safe_readdir "test/input/dont_err" ".fic") ]
 ;;

@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Printf
 open Pretty
 open Phases
@@ -183,7 +182,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let widths = [I8; I16; I32; I64] in
   let uwidths = [U8; U16; U32; U64] in
   let int_types = List.map (fun w -> TyCon (Int w)) widths in
-  let int_types = int_types @ (List.map (fun w -> TyCon (UInt w)) uwidths) in
+  let int_types = int_types @ List.map (fun w -> TyCon (UInt w)) uwidths in
   let bool_type = TyCon Bool in
   let self = TyVar "Self" in
   let params_self = ["Self"] in
@@ -275,4 +274,3 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   match p with
   | Program (decls, loc) -> Program (built_in_classes @ instances @ [eq_bool_instance] @ decls, loc)
 ;;
-

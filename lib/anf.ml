@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 open Typecheck
 open Tag
@@ -193,4 +192,3 @@ let atag_prog p =
   in
   map_tags_aprogram tag p
 ;;
-

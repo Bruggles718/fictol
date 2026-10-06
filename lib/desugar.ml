@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 
 let desugar (p : sourcespan program) : sourcespan program =
@@ -118,4 +117,3 @@ let desugar (p : sourcespan program) : sourcespan program =
   match p with
   | Program (decls, tag) -> Program (helpG decls, tag)
 ;;
-

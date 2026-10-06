@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 open Typecheck
 open Anf
@@ -46,7 +45,8 @@ let typ_to_llvm_signed typ =
 let typ_to_llvm_fn_type context typ =
   match typ with
   | TyArrow (args, ret, call_type) ->
-      function_type (typ_to_llvm_typ context ret) (Array.of_list (List.map (typ_to_llvm_typ context) args))
+      function_type (typ_to_llvm_typ context ret)
+        (Array.of_list (List.map (typ_to_llvm_typ context) args))
   | _ -> failwith "expected a function type"
 ;;
 
@@ -95,7 +95,7 @@ and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
 
 and compile_aexpr context builder env (e : 'a aexpr) llvm_fun : llvalue =
   match e with
-  | ACExpr c -> compile_cexpr context builder  env c llvm_fun
+  | ACExpr c -> compile_cexpr context builder env c llvm_fun
   | ALet (name, bound, body, _) ->
       let v = compile_cexpr context builder env bound llvm_fun in
       compile_aexpr context builder ((name, v) :: env) body llvm_fun
@@ -121,7 +121,7 @@ and compile_cexpr context builder env (c : 'a cexpr) llvm_fun : llvalue =
       compile_call context builder env closure args call_type
   | CIf (cond, thn, els, (tag, _)) ->
       let cond_imm = compile_immexpr context env cond in
-      let if_name = (sprintf "if_%d" tag) in
+      let if_name = sprintf "if_%d" tag in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let merge_bb = append_block context (if_name ^ "_end") llvm_fun in
@@ -166,7 +166,7 @@ and compile_cexpr_tail context builder env (c : 'a cexpr) llvm_fun : unit =
       ()
   | CIf (cond, thn, els, (tag, _)) ->
       let cond_imm = compile_immexpr context env cond in
-      let if_name = (sprintf "if_%d" tag) in
+      let if_name = sprintf "if_%d" tag in
       let thn_bb = append_block context (if_name ^ "_then") llvm_fun in
       let els_bb = append_block context (if_name ^ "_else") llvm_fun in
       let _ = build_cond_br cond_imm thn_bb els_bb builder in
@@ -186,7 +186,7 @@ and compile_call context builder env closure args call_type : llvalue =
   let llvm_args = Array.of_list (List.map (compile_immexpr context env) args) in
   (* the FUNCTION type, taken from the callee's own type so it matches its declaration *)
   let fn_type = typ_to_llvm_fn_type context (snd (tag_of_immexpr closure)) in
-  let (tag, _) = tag_of_immexpr closure in
+  let tag, _ = tag_of_immexpr closure in
   let call = build_call fn_type callee llvm_args (sprintf "app_%d" tag) builder in
   Llvm.set_instruction_call_conv (call_type_to_llvm_call_conv call_type) call;
   call
@@ -203,9 +203,9 @@ and prim2_to_llvm_op op ltyp rtyp =
   let ltykind = get_tycon_tykind ltyp in
   let rtykind = get_tycon_tykind rtyp in
   match (op, ltykind, rtykind) with
-  | Plus, Int _, Int _ | Plus, UInt _, UInt _-> build_add
+  | Plus, Int _, Int _ | Plus, UInt _, UInt _ -> build_add
   | Minus, Int _, Int _ | Minus, UInt _, UInt _ -> build_sub
-  | Times, Int _, Int _ | Times, UInt _, UInt _-> build_mul
+  | Times, Int _, Int _ | Times, UInt _, UInt _ -> build_mul
   | Divide, Int _, Int _ -> build_sdiv
   | Divide, UInt _, UInt _ -> build_udiv
   | Eq, Int _, Int _ | Eq, Bool, Bool | Eq, UInt _, UInt _ -> build_icmp Icmp.Eq
@@ -239,4 +239,3 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
       List.iter (compile_afun context builder llvm_funs_env) decls;
       string_of_llmodule the_module
 ;;
-

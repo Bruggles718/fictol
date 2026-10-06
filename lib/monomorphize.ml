@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 open Typecheck
 
@@ -215,4 +214,3 @@ let monomorphize (p : typed_tag program) : typed_tag program =
       done;
       Program (roots @ List.rev st.emitted, tag)
 ;;
-

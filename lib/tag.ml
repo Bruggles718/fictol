@@ -8,7 +8,6 @@ open Lexing
 open Llvm
 open Stdint
 open Fictol_stubs
-
 open Compiler_common
 open Typecheck
 
@@ -87,4 +86,3 @@ let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
   in
   rename [] p
 ;;
-
