@@ -35,7 +35,11 @@ let () =
   match compile_file_to_string !filename !filename with
   | Error (errs, trace) ->
       eprintf "Errors:\n";
-      eprintf "%s\n" (ExtString.String.join "\n" (print_errors errs))
+      eprintf "%s\n" (ExtString.String.join "\n" (print_errors errs));
+      if !show_trace then
+        printf "%s\n" (ExtString.String.join sep (print_trace trace))
+      else
+        ()
   | Ok (program, trace) ->
       if !show_trace then
         printf "%s\n" (ExtString.String.join sep (print_trace trace))
