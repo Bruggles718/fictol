@@ -10,14 +10,6 @@ open Stdint
 open Fictol_stubs
 
 open Compiler_common
-(* | DClass of string * string list * 'a predicate list * 'a method_sig list * 'a *)
-(* wf for DClass: duplicate method names within the class, duplicate params,
-   superclass / bound classes exist (UnknownClass), default bodies are
-   well-formed expressions in a scope containing the method args. *)
-
-let wf_instance_decl (d : sourcespan decl) env : exn list = []
-(* wf for DInstance: the class exists with the right arity, the methods are
-   well-formed DFuns (reuse wf_D), and the instance generics are distinct. *)
 
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   let rec string_list_from_bind bind =
@@ -103,6 +95,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         let err_lst = args_err_lst @ typ_err_lst @ wf_E body env2 in
         err_lst
     | DClass _ | DInstance _ -> []
+  (* wf for DInstance: the class exists with the right arity, the methods are
+   well-formed DFuns (reuse wf_D), and the instance generics are distinct. *)
+  and wf_instance_decl (d : sourcespan decl) env : exn list = []
+  (* wf for DClass: duplicate method names within the class, duplicate params,
+   superclass / bound classes exist (UnknownClass), default bodies are
+   well-formed expressions in a scope containing the method args. *)
   and wf_class_decl (d : sourcespan decl) env superclass_env : exn list =
     match d with
     | DClass (name, params, superclasses, method_sigs, loc) ->
