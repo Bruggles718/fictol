@@ -1,0 +1,32 @@
+typeclass Rect<Self> extends Mul<Self>:
+    def area(a: Self, b: Self) -> Self
+
+instance Rect<i32>:
+    def area(a: i32, b: i32) -> i32:
+        a * b
+
+typeclass Square<Self> extends Rect<Self>:
+    def side_length(a: Self, b: Self) -> Self
+
+instance Square<i32>:
+    def side_length(a: i32, b: i32) -> i32:
+        a
+
+# def get_area<T: Rect<T>>(a: T, b: T) -> T:
+#     area(a, b)
+
+def get_area_sq<T: Square<T>>(a: T, b: T) -> T:
+    let x = area(a, b) in
+    side_length(x, x)
+
+def compare<T: Ord<T>>(a: T, b: T) -> bool:
+    if a == b:
+        true
+    else: if a > b:
+        false
+    else: 
+        false
+
+extern "C" def test_entry() -> i32:
+    compare(5, 7);
+    area(5, 5)

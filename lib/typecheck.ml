@@ -924,7 +924,7 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
       if res then
         ()
       else
-        failwith "Check superclass obligations failure: no instance" )
+        failwith (sprintf "Check superclass obligations failure: no instance of %s" (string_of_pred superclass)))
     superclasses
 ;;
 
