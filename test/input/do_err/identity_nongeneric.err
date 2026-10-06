@@ -1,0 +1,2 @@
+Type annotation required for x at <do_err/identity_nongeneric, 1:13-1:14>
+Type annotation required for identity return type at <do_err/identity_nongeneric, 1:0-2:5>

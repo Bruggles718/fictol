@@ -1,0 +1,5 @@
+def identity(x):
+    x
+
+extern "C" def test_entry() -> i32:
+    identity(32)

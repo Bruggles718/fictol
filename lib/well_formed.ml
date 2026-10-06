@@ -79,7 +79,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | ETyApp (e, _, _) -> wf_E e env
   and wf_D d env (* other parameters may be needed here *) =
     match d with
-    | DFun (_, generics, args, body, ct, typ, _) ->
+    | DFun (fun_name, generics, args, body, ct, typ, fun_loc) ->
         let env2, _, args_err_lst =
           List.fold_left
             (fun (scope_env, shadow_env, args_err_lst) (x, loc) ->
@@ -92,7 +92,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             (List.concat (List.map string_list_from_bind args))
         in
         let typ_err_lst = List.map blank_typ_in_bind_errs args |> List.concat in
-        let err_lst = args_err_lst @ typ_err_lst @ wf_E body env2 in
+        let ret_typ_err = (
+          match typ with
+          | TyBlank _ -> [NoTypeAnnotation (fun_name ^ " return type", fun_loc)]
+          | _ -> []
+        ) in
+        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @ wf_E body env2 in
         err_lst
     | DClass _ | DInstance _ -> []
   (* wf for DInstance: the class exists with the right arity, the methods are

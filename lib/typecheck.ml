@@ -278,7 +278,7 @@ let rec unify (t1 : typ) (t2 : typ) (span : sourcespan) : typ subst =
     when t1_call_type = t2_call_type -> unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
-  | _ -> failwith (sprintf "Unification failure at <%s>" (string_of_sourcespan span))
+  | _ -> failwith (sprintf "Unification failure at <%s>: cannot unify %s and %s" (string_of_sourcespan span) (string_of_typ t1) (string_of_typ t2))
 
 and unify_lists (ts1 : typ list) (ts2 : typ list) (span : sourcespan) : typ subst =
   match (ts1, ts2) with

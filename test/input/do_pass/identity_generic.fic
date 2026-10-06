@@ -1,0 +1,5 @@
+def identity<T>(x: T) -> T:
+    x
+
+extern "C" def test_entry() -> bool:
+    identity(true)
