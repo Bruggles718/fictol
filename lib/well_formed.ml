@@ -135,12 +135,22 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             wf_D (DFun(ms.ms_name, ms.ms_generics, ms.ms_args, body, FictolFunc, ms.ms_ret, ms.ms_span)) env
           | None -> [])
         method_sigs) in
-      dup_params_errs @ dup_method_errs @ method_body_errs
+      let superclass_errs =
+        List.map
+        (fun pred -> 
+          try
+            let (params_len, sup_loc) = List.assoc pred.pred_class superclass_env in
+            if params_len = (List.length params) then [] else [Arity (params_len, (List.length params), loc) ]
+          with
+          | Not_found -> [UnboundId (pred.pred_class, loc)])
+          superclasses |> List.concat in
+      dup_params_errs @ superclass_errs @ dup_method_errs @ method_body_errs
     | _ -> failwith "well-formed class decl failure: given non class"
   and wf_D_list decls env =
     let full_env = get_new_env decls in
     let (dup_method_errs, method_scope) = get_method_names decls in
     let dup_class_errs = get_dup_class_errs decls in
+    let class_env = get_class_env decls in
     dup_class_errs @ dup_method_errs @ List.concat
       (List.mapi
          (fun i d ->
@@ -155,7 +165,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                  let err = DuplicateFun (name, loc, existing) in
                  [err] @ err_lst
                with Not_found -> err_lst )
-           | DClass _ -> wf_class_decl d env []
+           | DClass _ -> wf_class_decl d env class_env
            | DInstance _ -> wf_instance_decl d env)
          decls )
   and get_new_env decls =
@@ -179,6 +189,14 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         | _ -> [] )
       decls
     )
+  and get_class_env decls =
+    List.map
+    (fun d ->
+      match d with
+      | DClass(name, params, _, _, loc) -> [(name, (List.length params, loc))]
+      | _ -> [])
+    decls
+    |> List.concat
   and get_method_names decls =
     (* class methods are global functions, so they are in scope everywhere *)
     let existing_method_names = Hashtbl.create 8 in

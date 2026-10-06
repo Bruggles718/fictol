@@ -1,4 +1,4 @@
-typeclass TestClass<Self>:
+typeclass TestClass<Self> extends DickAndBalls<Self>:
     def egg(x: Self) -> Self
     and def egg(x: Self) -> Self
     and def add(a: Self, b: Self) -> Self
