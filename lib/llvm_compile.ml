@@ -27,7 +27,7 @@ let typ_to_llvm_typ context typ =
     | UInt U64 -> i64_type context
     | Bool -> i1_type context
     | _ -> failwith "Typ to llvm typ failure: unsupported tykind" )
-  | _ -> failwith "cannot convert non TyCon to llvm"
+  | _ -> failwith (sprintf "cannot convert %s to llvm" (string_of_typ typ))
 ;;
 
 let get_tycon_tykind typ =

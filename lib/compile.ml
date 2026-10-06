@@ -30,9 +30,9 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   let the_module = create_module context module_name in
   let builder = builder context in
   prog
+  |> add_phase type_names_resolved resolve_prog_typ_paths
   |> add_err_phase well_formed (fun p -> is_well_formed (add_builtins p))
   |> add_phase desugared desugar
-  |> add_phase type_names_resolved resolve_prog_typ_paths
   (* |> add_err_phase type_checked type_synth *)
   (* when ready: type_synth_tc here, then
      |> add_phase monomorphized monomorphize   (* new phase name in Phases *) *)
