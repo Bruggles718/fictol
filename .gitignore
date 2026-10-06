@@ -7,3 +7,4 @@ main
 *.run
 test_fictol
 *.cache
+compile_commands.json
