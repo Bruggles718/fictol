@@ -20,8 +20,8 @@ let tag_prog (p : 'a program) : (tag * typ) program =
   map_tags_program tag p
 ;;
 
-let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
-  let rec rename env p =
+let rename (p : (tag * typ) program) : (tag * typ) program =
+  let rec helpP env p =
     match p with
     | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
   and helpD env decl =
@@ -84,5 +84,5 @@ let rename_and_tag (p : (tag * typ) program) : (tag * typ) program =
         ELet (binds', body', tag)
     | _ -> failwith "Rename and tag: unsupported expr"
   in
-  rename [] p
+  helpP [] p
 ;;

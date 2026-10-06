@@ -39,7 +39,7 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   |> add_err_phase type_checked type_synth_tc
   |> add_phase monomorphized monomorphize
   |> add_phase tagged tag_prog
-  |> add_phase renamed rename_and_tag
+  |> add_phase renamed rename
   |> add_phase anfed (fun p -> atag_prog (anf p))
   |> add_phase result (compile_prog context the_module builder)
 ;;
