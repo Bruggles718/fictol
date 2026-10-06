@@ -50,13 +50,6 @@ let typ_to_llvm_fn_type context typ =
   | _ -> failwith "expected a function type"
 ;;
 
-let gensym_compile =
-  let next = ref 0 in
-  fun name ->
-    next := !next + 1;
-    sprintf "%s_%d" name !next
-;;
-
 let call_type_to_llvm_call_conv ct =
   match ct with
   | Extern "C" -> Llvm.CallConv.c
