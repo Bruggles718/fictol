@@ -1,0 +1,9 @@
+def f(x: i32) -> i32:
+    x * 2
+
+def g(x: i32) -> i32:
+    x * 3
+
+extern "C" def test_entry() -> i32:
+    let x = if true: f else: g in
+    x(3)
