@@ -102,23 +102,28 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   and wf_instance_decl (d : sourcespan decl) env : exn list =
     match d with
     | DInstance (generic_binds, head, method_impls, loc) ->
-      let existing_method_names = Hashtbl.create 8 in
-      let method_impl_errs = List.concat (
-        List.map
-        (fun mi ->
-          match mi with
-          | ImplDecl(DFun(name, generics, args, body, call_type, ret_typ, dloc)) ->
-            let dup_err = (if Hashtbl.mem existing_method_names name then
-              [DuplicateFun(name, dloc, Hashtbl.find existing_method_names name)]
-            else
-              []) in
-            let decl_errs = wf_D (DFun(name, generics, args, body, call_type, ret_typ, dloc)) env in
-            dup_err @ decl_errs
-          | ImplDecl(_) -> [Unsupported ("Non-function method def found", loc)]
-          | _ -> [])
-        method_impls
-      ) in
-      method_impl_errs
+        let existing_method_names = Hashtbl.create 8 in
+        let method_impl_errs =
+          List.concat
+            (List.map
+               (fun mi ->
+                 match mi with
+                 | ImplDecl (DFun (name, generics, args, body, call_type, ret_typ, dloc)) ->
+                     let dup_err =
+                       if Hashtbl.mem existing_method_names name then
+                         [DuplicateFun (name, dloc, Hashtbl.find existing_method_names name)]
+                       else
+                         []
+                     in
+                     let decl_errs =
+                       wf_D (DFun (name, generics, args, body, call_type, ret_typ, dloc)) env
+                     in
+                     dup_err @ decl_errs
+                 | ImplDecl _ -> [Unsupported ("Non-function method def found", loc)]
+                 | _ -> [] )
+               method_impls )
+        in
+        method_impl_errs
     | _ -> failwith "well-formed instance decl failure: given non instance"
   (* wf for DClass: duplicate method names within the class, duplicate params,
    superclass / bound classes exist (UnknownClass), default bodies are

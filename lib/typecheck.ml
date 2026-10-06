@@ -14,44 +14,53 @@ let rec resolve_typ_path env (typ : typ) =
   match typ with
   | TyPath (path, t) -> (
     match path with
-    | ["i8"] -> TyCon (Int I8)
-    | ["i16"] -> TyCon (Int I16)
-    | ["i32"] -> TyCon (Int I32)
-    | ["i64"] -> TyCon (Int I64)
-    | ["u8"] -> TyCon (UInt U8)
-    | ["u16"] -> TyCon (UInt U16)
-    | ["u32"] -> TyCon (UInt U32)
-    | ["u64"] -> TyCon (UInt U64)
-    | ["bool"] -> TyCon Bool
+    | ["i8"] -> (TyCon (Int I8), [])
+    | ["i16"] -> (TyCon (Int I16), [])
+    | ["i32"] -> (TyCon (Int I32), [])
+    | ["i64"] -> (TyCon (Int I64), [])
+    | ["u8"] -> (TyCon (UInt U8), [])
+    | ["u16"] -> (TyCon (UInt U16), [])
+    | ["u32"] -> (TyCon (UInt U32), [])
+    | ["u64"] -> (TyCon (UInt U64), [])
+    | ["bool"] -> (TyCon Bool, [])
     (* change to solve path eventually *)
     | [name] ->
         if List.mem name env then
-          TyVar name
+          (TyVar name, [])
         else
-          failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path))
-    | _ -> failwith (sprintf "cannot resolve type %s" (ExtString.String.join "::" path)) )
-  | TyVar name -> TyVar name
-  | TyCon name -> TyCon name
-  | TyArrow (args, ret_type, call_type) ->
-      TyArrow
-        ( List.map (fun arg -> resolve_typ_path env arg) args,
-          resolve_typ_path env ret_type,
-          call_type )
-  | TyBlank t -> TyBlank t
+          (typ, [UnknownType typ])
+    | _ -> (typ, [UnknownType typ]) )
+  | TyVar name -> (TyVar name, [])
+  | TyCon name -> (TyCon name, [])
+  | TyArrow (args, ret_typ, call_type) ->
+      let args_typs_errs = List.map (fun arg -> resolve_typ_path env arg) args in
+      let arg_typs, arg_errs = List.split args_typs_errs in
+      let ret_typ, ret_errs = resolve_typ_path env ret_typ in
+      let errs = List.concat arg_errs @ ret_errs in
+      (TyArrow (arg_typs, ret_typ, call_type), errs)
+  | TyBlank t -> (TyBlank t, [])
   | TyApp (ret_typ, args) ->
-      TyApp (resolve_typ_path env ret_typ, List.map (fun arg -> resolve_typ_path env arg) args)
+      let args_typs_errs = List.map (fun arg -> resolve_typ_path env arg) args in
+      let arg_typs, arg_errs = List.split args_typs_errs in
+      let ret_typ, ret_errs = resolve_typ_path env ret_typ in
+      let errs = List.concat arg_errs @ ret_errs in
+      (TyApp (ret_typ, arg_typs), errs)
 ;;
 
 (* REAL. Use this (not resolve_typ_path) on a bound. Checking that the class
    exists belongs in is_well_formed, not here. *)
-let resolve_predicate (generic_env : string list) (p : 'a predicate) : 'a predicate =
-  {p with pred_args= List.map (resolve_typ_path generic_env) p.pred_args}
+let resolve_predicate (generic_env : string list) (p : 'a predicate) =
+  let args_typs_errs = List.map (fun arg -> resolve_typ_path generic_env arg) p.pred_args in
+  let arg_typs, arg_errs = List.split args_typs_errs in
+  ({p with pred_args= arg_typs}, (List.concat arg_errs))
 ;;
 
-let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
+let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallible =
   let rec helpP p =
     match p with
-    | Program (decls, span) -> Program (List.map helpD decls, span)
+    | Program (decls, span) -> 
+      let (new_decls, errs) = List.split (List.map helpD decls) in
+      (Program (new_decls, span), List.concat errs)
   and string_list_of_generics gs =
     List.map
       (fun g ->
@@ -61,69 +70,101 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program =
   and helpGeneric env g =
     match g with
     | GBName (name, predicates, tag) ->
-        GBName (name, List.map (resolve_predicate env) predicates, tag)
+        let preds, errs = List.split (List.map (resolve_predicate env) predicates) in
+        (GBName (name, preds, tag), (List.concat errs))
   and helpD decl = helpD_in [] decl
   and helpImplD_in outer impl_d =
     match impl_d with
-    | ImplDecl decl -> ImplDecl (helpD_in outer decl)
-    | ImplPrim1 _ | ImplPrim2 _ -> impl_d
+    | ImplDecl decl ->
+        let new_decl, errs = helpD_in outer decl in
+        (ImplDecl new_decl, errs)
+    | ImplPrim1 _ | ImplPrim2 _ -> (impl_d, [])
   and helpD_in outer decl =
     (* `outer` = type variables already in scope (instance generics for methods) *)
     match decl with
     | DFun (name, generics, args, body, call_type, typ, span) ->
         let generic_env = outer @ string_list_of_generics generics in
-        let new_args = List.map (fun arg -> helpBind generic_env arg) args in
-        DFun
-          ( name,
-            List.map (helpGeneric generic_env) generics,
-            new_args,
-            helpE generic_env body,
-            call_type,
-            resolve_typ_path generic_env typ,
-            span )
+        let new_args, args_errs =
+          List.split (List.map (fun arg -> helpBind generic_env arg) args)
+        in
+        let gens, gen_errs = List.split (List.map (helpGeneric generic_env) generics) in
+        let ret_typ, ret_errs = resolve_typ_path generic_env typ in
+        let new_body, body_errs = helpE generic_env body in
+        ( DFun (name, gens, new_args, new_body, call_type, ret_typ, span),
+          ((List.concat gen_errs) @ (List.concat args_errs) @ ret_errs @ body_errs) )
     | DClass (name, params, supers, sigs, span) ->
-        DClass
-          ( name,
-            params,
-            List.map (resolve_predicate params) supers,
-            List.map (helpSig params) sigs,
-            span )
+        let new_supers, super_errs = List.split (List.map (resolve_predicate params) supers) in
+        let new_sigs, sig_errs = List.split (List.map (helpSig params) sigs) in
+        ( DClass (name, params, new_supers, new_sigs, span),
+          (List.concat super_errs) @ (List.concat sig_errs) )
     | DInstance (generics, head, methods, span) ->
         let inst_env = string_list_of_generics generics in
-        DInstance
-          ( List.map (helpGeneric inst_env) generics,
-            resolve_predicate inst_env head,
-            List.map (helpImplD_in inst_env) methods,
-            span )
+        let new_gens, gen_errs = List.split (List.map (helpGeneric inst_env) generics) in
+        let new_head, head_errs = resolve_predicate inst_env head in
+        let new_impls, impl_errs = List.split (List.map (helpImplD_in inst_env) methods) in
+        ( DInstance (new_gens, new_head, new_impls, span),
+          (List.concat gen_errs) @ head_errs @ (List.concat impl_errs) )
   and helpSig class_env s =
     let env = class_env @ string_list_of_generics s.ms_generics in
-    { s with
-      ms_generics= List.map (helpGeneric env) s.ms_generics;
-      ms_args= List.map (helpBind env) s.ms_args;
-      ms_ret= resolve_typ_path env s.ms_ret;
-      ms_default= Option.map (helpE env) s.ms_default }
+    let new_gens, gen_errs = List.split (List.map (helpGeneric env) s.ms_generics) in
+    let new_args, arg_errs = List.split (List.map (helpBind env) s.ms_args) in
+    let new_ret, ret_errs = resolve_typ_path env s.ms_ret in
+    let new_default, default_errs =
+      match s.ms_default with
+      | Some default ->
+          let new_default, default_errs = helpE env default in
+          (Some new_default, default_errs)
+      | None -> (None, [])
+    in
+    ( {s with ms_generics= new_gens; ms_args= new_args; ms_ret= new_ret; ms_default= new_default},
+      List.concat gen_errs @ (List.concat arg_errs) @ ret_errs @ default_errs )
   and helpBind env bind =
     match bind with
-    | BName (name, shadow, typ, span) -> BName (name, shadow, resolve_typ_path env typ, span)
-    | BBlank _ -> bind
+    | BName (name, shadow, typ, span) ->
+        let new_typ, typ_errs = resolve_typ_path env typ in
+        (BName (name, shadow, new_typ, span), typ_errs)
+    | BBlank _ -> (bind, [])
   (* | _ -> failwith "should've been desugared" *)
   and helpE env expr =
     match expr with
     | ELet (bindings, body, span) ->
-        let new_bindings =
-          List.map
-            (fun (bind, bind_body, span) -> (helpBind env bind, helpE env bind_body, span))
-            bindings
+        let new_bindings, binding_errs =
+          List.split
+            (List.map
+               (fun (bind, bind_body, span) ->
+                 let new_bind, bind_errs = helpBind env bind in
+                 let new_body, body_errs = helpE env bind_body in
+                 ((new_bind, new_body, span), bind_errs @ body_errs) )
+               bindings )
         in
-        ELet (new_bindings, helpE env body, span)
-    | EIf (cond, thn, els, span) -> EIf (helpE env cond, helpE env thn, helpE env els, span)
-    | EApp (closure, args, span) -> EApp (helpE env closure, List.map (helpE env) args, span)
-    | ESeq (e1, e2, span) -> ESeq (helpE env e1, helpE env e2, span)
-    | EPrim1 (op, body, span) -> EPrim1 (op, helpE env body, span)
-    | EPrim2 (op, l, r, span) -> EPrim2 (op, helpE env l, helpE env r, span)
-    | _ -> expr
+        let new_body, body_errs = helpE env body in
+        (ELet (new_bindings, new_body, span), List.concat binding_errs @ body_errs)
+    | EIf (cond, thn, els, span) ->
+        let new_cond, cond_errs = helpE env cond in
+        let new_thn, thn_errs = helpE env thn in
+        let new_els, els_errs = helpE env els in
+        (EIf (new_cond, new_thn, new_els, span), cond_errs @ thn_errs @ els_errs)
+    | EApp (closure, args, span) ->
+        let new_closure, closure_errs = helpE env closure in
+        let new_args, arg_err_lists = List.split (List.map (helpE env) args) in
+        (EApp (new_closure, new_args, span), closure_errs @ List.concat arg_err_lists)
+    | ESeq (e1, e2, span) ->
+        let new_e1, errs1 = helpE env e1 in
+        let new_e2, errs2 = helpE env e2 in
+        (ESeq (new_e1, new_e2, span), errs1 @ errs2)
+    | EPrim1 (op, body, span) ->
+        let new_body, errs = helpE env body in
+        (EPrim1 (op, new_body, span), errs)
+    | EPrim2 (op, l, r, span) ->
+        let new_l, l_errs = helpE env l in
+        let new_r, r_errs = helpE env r in
+        (EPrim2 (op, new_l, new_r, span), l_errs @ r_errs)
+    | _ -> (expr, [])
   in
-  helpP p
+  let (prog, errs) = helpP p in
+  match errs with
+  | [] -> Ok(prog)
+  | _ -> Error(errs)
 ;;
 
 let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =

@@ -1,5 +1,6 @@
 open Printf
 open Exprs
+open Types
 open Pretty
 open Stdint
 
@@ -27,9 +28,7 @@ exception InternalCompilerError of string (* Major failure: message to show *)
 
 exception NoTypeAnnotation of string * sourcespan
 
-exception CannotInferType of string
-
-exception InconsistentType of string
+exception UnknownType of typ
 
 (* name binding, where defined *)
 (* exception LetRecNonFunction of sourcespan bind * sourcespan  *)
@@ -51,8 +50,7 @@ let known_compiletime_exn exn =
    |DuplicateId _
    |DuplicateFun _
    |Unsupported _
-   |CannotInferType _
-   |InconsistentType _
+   |UnknownType _
    |NoTypeAnnotation _
    |Arity _ -> true
   | _ -> false
@@ -83,8 +81,8 @@ let print_error exn =
   | DeclArity (name, num_args, num_types, loc) ->
       sprintf "The function %s, defined at %s, has %d arguments but only %d types provided" name
         (string_of_sourcespan loc) num_args num_types
-  | CannotInferType msg -> "Cannot infer type: " ^ msg
-  | InconsistentType msg -> "Inconsistent type: " ^ msg
+  | UnknownType (TyPath (path, loc)) ->
+      sprintf "cannot resolve type %s" (ExtString.String.join "::" path)
   | NoTypeAnnotation (x, loc) ->
       sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
   | _ -> sprintf "%s" (Printexc.to_string exn)
