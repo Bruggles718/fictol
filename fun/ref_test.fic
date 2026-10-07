@@ -1,5 +1,11 @@
 extern "C" def test_entry() -> i32:
     let x = 32 in
-    (borrow x as x_ref for Reg in
-    x_ref);
+    let escape = (
+        borrow x as x_ref for Reg in
+        let y: ref<i32, Reg> = x_ref in
+        test_return_ref(y)
+    ) in
     32
+
+def test_return_ref<T>(x: ref<i32, T>) -> ref<i32, T>:
+    x

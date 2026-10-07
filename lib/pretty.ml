@@ -109,7 +109,7 @@ let rec string_of_typ (t : typ) : string =
       ^ "<"
       ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst)
       ^ ">"
-  | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
+  | TyPath (path, _) -> "path:" ^ ExtString.String.join "::" path
 ;;
 
 let rec string_of_bind (b : 'a bind) : string =
