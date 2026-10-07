@@ -57,6 +57,11 @@ let call_type_to_llvm_call_conv ct =
   | _ -> 18 (* tailcc *)
 ;;
 
+let name_of_immexpr imm =
+  match imm with
+  | ImmId (name, _) -> name
+  | _ -> failwith (sprintf "cannot get name of non-id %s" (string_of_immexpr imm))
+
 let rec compile_afun context builder env (f : 'a adecl) : unit =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
@@ -113,11 +118,15 @@ and compile_cexpr context builder env (c : 'a cexpr) llvm_fun : llvalue =
   | CPrim1 (op, body, (tag, typ)) ->
       let b = compile_immexpr context env body in
       (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder
-  | CReference (body, (tag, typ)) -> failwith "cannot compile ref yet"
-      (* let b = compile_immexpr context env body in
+  | CReference (body, (tag, typ)) ->
+      let b = compile_immexpr context env body in
       let (_, body_typ) = tag_of_immexpr body in
-      let stack_copy = build_alloca (typ_to_llvm_typ body_typ) (sprintf "cref_%d" tag) builder in
-      (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder *)
+      let llt = (typ_to_llvm_typ context body_typ) in
+      let stack_loc = build_alloca llt (sprintf "cref_val_copy_%d" tag) builder in
+      let _ = build_store b stack_loc builder in
+      Hashtbl.replace env (name_of_immexpr body) stack_loc;
+      stack_loc
+      (* I think this is wrong. needs more thought *)
   | CApp (closure, args, _) ->
       let _, closure_typ = tag_of_immexpr closure in
       let call_type = call_type_of_arrow_typ closure_typ in
