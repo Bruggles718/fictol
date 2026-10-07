@@ -69,7 +69,6 @@ expr :
   | BORROW expr AS ID FOR ID IN expr { EBorrow($2, $4, $6, $8, full_span()) }
   // | LET REC namebindings IN expr { ELetRec($3, $5, full_span()) }
   | IF expr COLON expr ELSECOLON expr { EIf($2, $4, $6, full_span()) }
-  | BEGIN expr END { $2 }
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
 
@@ -136,6 +135,7 @@ binop_operand :
   // Parentheses
   | LPARENSPACE expr RPAREN { $2 }
   | LPARENNOSPACE expr RPAREN { $2 }
+  | BEGIN expr END { $2 }
   // Lambdas
   // | LPARENNOSPACE LAMBDA LPARENNOSPACE binds RPAREN COLON expr RPAREN { ELambda($4, $7, full_span()) }
   // | LPARENNOSPACE LAMBDA LPARENSPACE binds RPAREN COLON expr RPAREN { ELambda($4, $7, full_span()) }
