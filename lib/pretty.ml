@@ -76,7 +76,7 @@ let name_of_op2 op =
 let rec string_of_tykind (t : tykind) =
   match t with
   | Region -> "region"
-  | RegionName (name) -> "region_name_" ^ name
+  | RegionName (name) -> name
   | Reference -> "ref"
   | Bool -> "bool"
   | Skolem s -> "Skolem(" ^ s ^ ")"

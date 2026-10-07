@@ -24,9 +24,9 @@ let rec typ_to_symbol (t : typ) : string =
   | TyApp (generic_ty, generic_param_ty_lst) ->
       string_of_typ generic_ty
       ^ "$"
-      ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst)
+      ^ ExtString.String.join "." (List.map string_of_typ generic_param_ty_lst)
       ^ "$"
-  | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
+  | _ -> failwith (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (string_of_typ t))
 ;;
 
 let mangle_name (base : string) (type_args : typ list) : string =

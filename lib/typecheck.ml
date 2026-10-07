@@ -1425,7 +1425,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
     | EReference(body, loc) ->
       let body_subst, body_typ, body_wanteds, new_body_expr = infer_exp_elab env body in
-      let ref_typ = TyApp(TyCon(Reference), [body_typ; TyApp(TyCon(Region), [TyVar(gensym_typ "region_name")])]) in
+      let ref_typ = TyApp(TyCon(Reference), [body_typ; TyApp(TyCon(Region), [TyVar(gensym_typ "RN")])]) in
       let final_typ = apply_subst_typ body_subst ref_typ in
       let final_constraints = apply_subst_wanteds body_subst body_wanteds in
       (* EReference(new_body_expr, (loc, )) in *)
