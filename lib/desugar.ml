@@ -96,6 +96,12 @@ let desugar (p : sourcespan program) : sourcespan program =
     | EIf (cond, thn, els, tag) -> EIf (helpE cond, helpE thn, helpE els, tag)
     | EApp (name, args, tag) -> EApp (helpE name, List.map helpE args, tag)
     | ETyApp (e, tys, tag) -> ETyApp (helpE e, tys, tag)
+    | EBorrow(borrowed_expr, ref_name, region, body, tag) ->
+      ELet(
+        [(BName(ref_name, false, TyApp(TyCon(Reference), [(TyBlank(tag)); TyCon(Region(region))]), tag), EReference(helpE borrowed_expr, tag), tag)],
+        body,
+        tag)
+    | EReference(body, tag) -> EReference(helpE body, tag)
     (* | ELambda (binds, body, tag) ->
         let expandBind bind =
           match bind with

@@ -74,6 +74,11 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         [Unsupported ("Calling closures is not yet supported", loc)]
     | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env
     | ETyApp (e, _, _) -> wf_E e env
+    | EBorrow(borrowed_expr, ref_name, region, body, loc) ->
+      let body_env = (ref_name, loc) :: env in
+      wf_E borrowed_expr env @ wf_E body body_env
+    | EReference(body, loc) ->
+      wf_E body env
   and wf_D d env (* other parameters may be needed here *) =
     match d with
     | DFun (fun_name, generics, args, body, ct, typ, fun_loc) ->

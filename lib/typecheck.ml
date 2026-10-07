@@ -159,6 +159,14 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         let new_l, l_errs = helpE env l in
         let new_r, r_errs = helpE env r in
         (EPrim2 (op, new_l, new_r, span), l_errs @ r_errs)
+    | EBorrow(borrowed_expr, ref_name, region, body, span) ->
+      let (new_borrowed_expr, be_errs) = helpE env borrowed_expr in
+      let new_env = region :: env in
+      let new_body, body_errs = helpE new_env body in
+      (EBorrow(new_borrowed_expr, ref_name, region, new_body, span), be_errs @ body_errs)
+    | EReference(body, span) ->
+      let new_body, body_errs = helpE env body in
+      (EReference(new_body, span), body_errs)
     | _ -> (expr, [])
   in
   let (prog, errs) = helpP p in
@@ -986,6 +994,8 @@ let tag_of_expr (e : 'a expr) : 'a =
    |EId (_, t)
    |EApp (_, _, t)
    |ETyApp (_, _, t) -> t
+   | EBorrow(_, _, _, _, t) -> t
+   | EReference(_, t) -> t
 ;;
 
 let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
@@ -1025,6 +1035,9 @@ let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
   | EId (x, tag) -> EId (x, f tag)
   | EApp (fn, args, tag) -> EApp (go fn, List.map go args, f tag)
   | ETyApp (body, tys, tag) -> ETyApp (go body, tys, f tag)
+  | EBorrow(borrowed_expr, ref_name, region, body, tag) ->
+    EBorrow(go borrowed_expr, ref_name, region, go body, f tag)
+  | EReference(body, tag) -> EReference(go body, f tag)
 ;;
 
 let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
@@ -1346,6 +1359,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
       done;
       Program (roots @ List.rev st.emitted, tag)
 ;;
+  
 
 let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
   let gensym_typ =
@@ -1355,6 +1369,13 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
       !count
     in
     fun str -> sprintf "%s_%d" str (next ())
+  in
+  let rec gen_blanks_in_typ typ =
+    match typ with
+    | TyApp (ret_typ, args) -> TyApp(gen_blanks_in_typ ret_typ, List.map gen_blanks_in_typ args)
+    | TyArrow(args, ret_typ, call_type) -> TyArrow(List.map gen_blanks_in_typ args, gen_blanks_in_typ ret_typ, call_type)
+    | TyBlank _ -> TyVar(gensym_typ "T")
+    | _ -> typ
   in
   let instantiate (s : 'a scheme) : 'a predicate list * typ =
     match s with
@@ -1564,11 +1585,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
             (printf "subst so far:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) subst_so_far))); *)
               match x with
               | BName (name, shadow, typ, loc) ->
-                  let typ =
-                    match typ with
-                    | TyBlank _ -> TyVar (gensym_typ name)
-                    | _ -> typ
-                  in
+                  let typ = gen_blanks_in_typ typ in
                   let unified_subst = unify typ b_typ loc in
                   let final_subst = compose_subst subst_so_far unified_subst in
                   ( StringMap.add name (SForall ([], [], b_typ)) new_env,

@@ -75,6 +75,8 @@ let name_of_op2 op =
 
 let rec string_of_tykind (t : tykind) =
   match t with
+  | Region(name) -> "region(" ^ name ^ ")"
+  | Reference -> "ref"
   | Bool -> "bool"
   | Skolem s -> "Skolem(" ^ s ^ ")"
   | Int w -> (
@@ -191,6 +193,17 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
     | ETyApp (e, typs, a) -> string_of_expr e
+    | EBorrow(borrowed_expr, ref_name, region, body, a) ->
+      sprintf "(borrow %s as %s for %s in %s)%s"
+      (string_of_expr borrowed_expr)
+      ref_name
+      region
+      (string_of_expr body)
+      (print_a a)
+    | EReference(body, a) ->
+      sprintf "(reference of %s)%s"
+      (string_of_expr body)
+      (print_a a)
 ;;
 
 (* | ELetRec (binds, body, a) ->
