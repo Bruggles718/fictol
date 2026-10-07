@@ -98,7 +98,7 @@ let desugar (p : sourcespan program) : sourcespan program =
     | ETyApp (e, tys, tag) -> ETyApp (helpE e, tys, tag)
     | EBorrow(borrowed_expr, ref_name, region, body, tag) ->
       ELet(
-        [(BName(ref_name, false, TyApp(TyCon(Reference), [(TyBlank(tag)); TyCon(Region(region))]), tag), EReference(helpE borrowed_expr, tag), tag)],
+        [(BName(ref_name, false, TyApp(TyCon(Reference), [(TyBlank(tag)); TyApp(TyCon(Region), [TyCon(RegionName(region))])]), tag), EReference(helpE borrowed_expr, tag), tag)],
         body,
         tag)
     | EReference(body, tag) -> EReference(helpE body, tag)

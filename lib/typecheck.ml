@@ -1248,7 +1248,7 @@ let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : t
   | _ -> failwith "Specialize decl failure: given non DFun"
 ;;
 
-let monomorphize (p : typed_tag program) : typed_tag program =
+(* let monomorphize (p : typed_tag program) : typed_tag program =
   match p with
   | Program (decls, tag) ->
       let _, _, funs = partition_decls decls in
@@ -1330,7 +1330,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | EIf (cond, thn, els, loc) ->
             EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
         | EId _ | ELiteral _ -> e
-        | _ -> failwith "Monomorphize failure: unsupported expression"
+        | _ -> failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in
       (* Non-generic functions are roots of the specialization graph.
          Generic functions themselves are templates and aren't emitted
@@ -1358,7 +1358,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | _ -> failwith "Monomorphize failure: specialization was not a DFun"
       done;
       Program (roots @ List.rev st.emitted, tag)
-;;
+;; *)
   
 
 let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
@@ -1613,6 +1613,16 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let env = apply_subst_schenv clo_subst env in
         let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, (loc, ret_typ)) in
         infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
+    | EReference(body, loc) ->
+      let body_subst, body_typ, body_wanteds, new_body_expr = infer_exp_elab env body in
+      let ref_typ = TyApp(TyCon(Reference), [body_typ; TyApp(TyCon(Region), [TyVar(gensym_typ "region_name")])]) in
+      let final_typ = apply_subst_typ body_subst ref_typ in
+      let final_constraints = apply_subst_wanteds body_subst body_wanteds in
+      (* EReference(new_body_expr, (loc, )) in *)
+      (body_subst, 
+      final_typ,
+      final_constraints,
+      EReference(new_body_expr, (loc, final_typ)))
     | _ -> failwith "bad"
   and infer_app_typ
       (make_expr : typed_tag expr list -> typ -> typed_tag expr)

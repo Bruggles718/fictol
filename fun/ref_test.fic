@@ -1,0 +1,5 @@
+extern "C" def test_entry() -> i32:
+    let x = 32 in
+    (borrow x as x_ref for Reg in
+    x_ref);
+    32

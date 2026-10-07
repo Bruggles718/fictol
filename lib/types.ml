@@ -23,7 +23,8 @@ type tykind =
   | Int of signed_int_width
   | UInt of unsigned_int_width
   | Bool
-  | Region of string
+  | Region
+  | RegionName of string
   | Reference (* non-owning pointer *)
   | Skolem of string
 (* NEW. A rigid type constant standing for a generic parameter while that

@@ -29,7 +29,7 @@ let rename (p : (tag * typ) program) : (tag * typ) program =
     | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
         let newArgs, env' = helpBS env args in
         DFun (name, [], newArgs, helpE env' body, call_type, ret_typ, (tag, typ))
-    | _ -> failwith "Rename and tag: Found non DFun after monomorphization?? Is that allowed?? Idk"
+    | _ -> failwith "Rename: Found non DFun after monomorphization?? Is that allowed?? Idk"
   and helpB env b =
     match b with
     | BBlank _ -> (b, env)
@@ -82,7 +82,9 @@ let rename (p : (tag * typ) program) : (tag * typ) program =
         let binds', env' = helpBG env binds in
         let body' = helpE env' body in
         ELet (binds', body', tag)
-    | _ -> failwith "Rename and tag: unsupported expr"
+    | EReference (body, tag) ->
+      EReference(helpE env body, tag)
+    | _ -> failwith (sprintf "Rename: unsupported expr %s" (string_of_expr e))
   in
   helpP [] p
 ;;
