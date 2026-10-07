@@ -26,6 +26,7 @@ let typ_to_llvm_typ context typ =
     | UInt U64 -> i64_type context
     | Bool -> i1_type context
     | _ -> failwith "Typ to llvm typ failure: unsupported tykind" )
+  | TyApp(TyCon(Reference), _) -> pointer_type context
   | _ -> failwith (sprintf "cannot convert %s to llvm" (string_of_typ typ))
 ;;
 
@@ -59,17 +60,20 @@ let call_type_to_llvm_call_conv ct =
 let rec compile_afun context builder env (f : 'a adecl) : unit =
   match f with
   | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
-      let llvm_fun = find env name in
+      let llvm_fun = Hashtbl.find env name in
       let args_env = List.combine (List.map fst binds) (Array.to_list (params llvm_fun)) in
+      List.iter
+      (fun (name, v) -> Hashtbl.replace env name v)
+      args_env;
       let bb = append_block context "entry" llvm_fun in
       position_at_end bb builder;
       (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
       ( match call_type with
       | Extern _ ->
-          let compiled_body = compile_aexpr context builder (args_env @ env) body llvm_fun in
+          let compiled_body = compile_aexpr context builder env body llvm_fun in
           let _ = build_ret compiled_body builder in
           ()
-      | _ -> compile_aexpr_tail context builder (args_env @ env) body llvm_fun );
+      | _ -> compile_aexpr_tail context builder env body llvm_fun );
       Llvm_analysis.assert_valid_function llvm_fun
 
 and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
@@ -91,7 +95,8 @@ and compile_aexpr context builder env (e : 'a aexpr) llvm_fun : llvalue =
   | ACExpr c -> compile_cexpr context builder env c llvm_fun
   | ALet (name, bound, body, _) ->
       let v = compile_cexpr context builder env bound llvm_fun in
-      compile_aexpr context builder ((name, v) :: env) body llvm_fun
+      Hashtbl.replace env name v;
+      compile_aexpr context builder env body llvm_fun
   | ASeq (first, rest, _) ->
       let _ = compile_cexpr context builder env first llvm_fun in
       compile_aexpr context builder env rest llvm_fun
@@ -108,6 +113,11 @@ and compile_cexpr context builder env (c : 'a cexpr) llvm_fun : llvalue =
   | CPrim1 (op, body, (tag, typ)) ->
       let b = compile_immexpr context env body in
       (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder
+  | CReference (body, (tag, typ)) -> failwith "cannot compile ref yet"
+      (* let b = compile_immexpr context env body in
+      let (_, body_typ) = tag_of_immexpr body in
+      let stack_copy = build_alloca (typ_to_llvm_typ body_typ) (sprintf "cref_%d" tag) builder in
+      (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder *)
   | CApp (closure, args, _) ->
       let _, closure_typ = tag_of_immexpr closure in
       let call_type = call_type_of_arrow_typ closure_typ in
@@ -139,7 +149,8 @@ and compile_aexpr_tail context builder env (e : 'a aexpr) llvm_fun : unit =
   | ALet (name, bound, body, _) ->
       let v = compile_cexpr context builder env bound llvm_fun in
       (* the bound value is NOT in tail position *)
-      compile_aexpr_tail context builder ((name, v) :: env) body llvm_fun
+      Hashtbl.replace env name v;
+      compile_aexpr_tail context builder env body llvm_fun
   | ASeq (first, rest, _) ->
       let _ = compile_cexpr context builder env first llvm_fun in
       compile_aexpr_tail context builder env rest llvm_fun
@@ -168,7 +179,7 @@ and compile_cexpr_tail context builder env (c : 'a cexpr) llvm_fun : unit =
       compile_aexpr_tail context builder env thn llvm_fun;
       position_at_end els_bb builder;
       compile_aexpr_tail context builder env els llvm_fun
-  | CImmExpr _ | CPrim1 _ | CPrim2 _ ->
+  | CImmExpr _ | CPrim1 _ | CPrim2 _ | CReference _ ->
       let v = compile_cexpr context builder env c llvm_fun in
       let _ = build_ret v builder in
       ()
@@ -186,7 +197,7 @@ and compile_call context builder env closure args call_type : llvalue =
 
 and compile_immexpr context env (e : 'a immexpr) : llvalue =
   match e with
-  | ImmId (name, (tag, typ)) -> find env name
+  | ImmId (name, (tag, typ)) -> Hashtbl.find env name
   | ImmLiteral (LitInt (n, suffix), (tag, typ)) ->
       const_of_int64 (typ_to_llvm_typ context typ) (Uint64.to_int64 n) (typ_to_llvm_signed typ)
   | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
@@ -228,7 +239,13 @@ and prim1_to_llvm_op op typ =
 let compile_prog context the_module builder (prog : (tag * typ) aprogram) : string =
   match prog with
   | AProgram (decls, (tag, typ)) ->
-      let llvm_funs_env = List.map (forward_declare_func the_module context) decls in
-      List.iter (compile_afun context builder llvm_funs_env) decls;
+      let env : (string, llvalue) Hashtbl.t = Hashtbl.create 32 in
+      
+        List.iter 
+        (fun decl -> 
+          let (name, llval) = forward_declare_func the_module context decl in
+          Hashtbl.replace env name llval) 
+        decls;
+      List.iter (compile_afun context builder env) decls;
       string_of_llmodule the_module
 ;;

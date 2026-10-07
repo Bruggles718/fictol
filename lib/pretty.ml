@@ -338,6 +338,10 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     "..."
   else
     match c with
+    | CReference(body, a) -> 
+      sprintf "(reference of %s)%s"
+      (string_of_immexpr body)
+      (print_a a)
     | CPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_immexpr e) (print_a a)
     | CPrim2 (op, left, right, a) ->
         sprintf "(%s %s %s)%s" (string_of_immexpr left) (string_of_op2 op) (string_of_immexpr right)

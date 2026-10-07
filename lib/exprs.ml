@@ -98,6 +98,7 @@ and 'a cexpr =
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
   | CApp of 'a immexpr * 'a immexpr list * 'a
   | CImmExpr of 'a immexpr
+  | CReference of 'a immexpr * 'a
 (* for when you just need an immediate value *)
 (* | CTuple of 'a immexpr list * 'a
   | CGetItem of 'a immexpr * 'a immexpr * 'a
