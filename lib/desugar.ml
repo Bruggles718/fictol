@@ -11,12 +11,12 @@ open Fictol_stubs
 open Compiler_common
 
 let desugar (p : sourcespan program) : sourcespan program =
-  (* let gensym =
+  let gensym =
     let next = ref 0 in
     fun name ->
       next := !next + 1;
-      sprintf "%s_?#%d" name !next
-  in *)
+      sprintf "%s_%d" name !next
+  in
   let rec helpBE bind =
     let b, e, btag = bind in
     let e = helpE e in
@@ -96,6 +96,12 @@ let desugar (p : sourcespan program) : sourcespan program =
     | EIf (cond, thn, els, tag) -> EIf (helpE cond, helpE thn, helpE els, tag)
     | EApp (name, args, tag) -> EApp (helpE name, List.map helpE args, tag)
     | ETyApp (e, tys, tag) -> ETyApp (helpE e, tys, tag)
+    | EBorrow(borrowed_expr, ref_name, region, body, tag) ->
+      ELet(
+        [(BName(ref_name, false, TyApp(TyCon(Reference), [(TyVar (gensym "T")); TyApp(TyCon(Region), [TyCon(RegionName(region))])]), tag), EReference(helpE borrowed_expr, tag), tag)],
+        body,
+        tag)
+    | EReference(body, tag) -> EReference(helpE body, tag)
     (* | ELambda (binds, body, tag) ->
         let expandBind bind =
           match bind with

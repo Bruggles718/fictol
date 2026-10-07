@@ -10,7 +10,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %token <string> STRING
 %token <Stdint.uint64 * string> INT
 %token <string> ID
-%token TYPECLASS INSTANCE EXTENDS ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
+%token BORROW AS FOR TYPECLASS INSTANCE EXTENDS ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
 
 %right SEMI
 %left COLON COLONEQ
@@ -66,9 +66,9 @@ bindings :
 
 expr :
   | LET bindings IN expr { ELet($2, $4, full_span()) }
+  | BORROW expr AS ID FOR ID IN expr { EBorrow($2, $4, $6, $8, full_span()) }
   // | LET REC namebindings IN expr { ELetRec($3, $5, full_span()) }
   | IF expr COLON expr ELSECOLON expr { EIf($2, $4, $6, full_span()) }
-  | BEGIN expr END { $2 }
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
 
@@ -135,6 +135,7 @@ binop_operand :
   // Parentheses
   | LPARENSPACE expr RPAREN { $2 }
   | LPARENNOSPACE expr RPAREN { $2 }
+  | BEGIN expr END { $2 }
   // Lambdas
   // | LPARENNOSPACE LAMBDA LPARENNOSPACE binds RPAREN COLON expr RPAREN { ELambda($4, $7, full_span()) }
   // | LPARENNOSPACE LAMBDA LPARENSPACE binds RPAREN COLON expr RPAREN { ELambda($4, $7, full_span()) }

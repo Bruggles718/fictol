@@ -87,6 +87,9 @@ rule token = parse
   | "typeclass" { TYPECLASS }
   | "instance" { INSTANCE }
   | "extends" { EXTENDS }
+  | "borrow" { BORROW }
+  | "as" { AS }
+  | "for" { FOR }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | '"' { Buffer.clear strbuf; string_literal lexbuf }
   | eof { EOF }

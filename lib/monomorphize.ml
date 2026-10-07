@@ -24,9 +24,9 @@ let rec typ_to_symbol (t : typ) : string =
   | TyApp (generic_ty, generic_param_ty_lst) ->
       string_of_typ generic_ty
       ^ "$"
-      ^ ExtString.String.join ", " (List.map string_of_typ generic_param_ty_lst)
+      ^ ExtString.String.join "." (List.map string_of_typ generic_param_ty_lst)
       ^ "$"
-  | TyPath (path, _) -> "::" ^ ExtString.String.join "::" path
+  | _ -> failwith (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (string_of_typ t))
 ;;
 
 let mangle_name (base : string) (type_args : typ list) : string =
@@ -185,7 +185,9 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | EIf (cond, thn, els, loc) ->
             EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
         | EId _ | ELiteral _ -> e
-        | _ -> failwith "Monomorphize failure: unsupported expression"
+        | EReference(body, loc) ->
+          EReference(monomorphize_expr body, loc)
+        | _ -> failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in
       (* Non-generic functions are roots of the specialization graph.
          Generic functions themselves are templates and aren't emitted
