@@ -14,17 +14,6 @@ let rec resolve_typ_path env (typ : typ) =
   match typ with
   | TyPath (path, t) -> (
     match path with
-    | ["i8"] -> (TyCon (Int I8), [])
-    | ["i16"] -> (TyCon (Int I16), [])
-    | ["i32"] -> (TyCon (Int I32), [])
-    | ["i64"] -> (TyCon (Int I64), [])
-    | ["u8"] -> (TyCon (UInt U8), [])
-    | ["u16"] -> (TyCon (UInt U16), [])
-    | ["u32"] -> (TyCon (UInt U32), [])
-    | ["u64"] -> (TyCon (UInt U64), [])
-    | ["bool"] -> (TyCon Bool, [])
-    | ["ref"] -> (TyCon Reference, [])
-    | ["region"] -> (TyCon Region, [])
     (* change to solve path eventually *)
     | [name] ->
         let found_opt = List.assoc_opt name env in
@@ -65,10 +54,24 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
       next := !next + 1;
       sprintf "%s_%d" name !next
   in
+  let builtin_types =
+  [
+    ("i8",   TyCon (Int I8));
+    ("i16",  TyCon (Int I16));
+    ("i32",  TyCon (Int I32));
+    ("i64",  TyCon (Int I64));
+    ("u8",   TyCon (UInt U8));
+    ("u16",  TyCon (UInt U16));
+    ("u32",  TyCon (UInt U32));
+    ("u64",  TyCon (UInt U64));
+    ("bool", TyCon Bool);
+    ("ref",  TyCon Reference);
+    ("region", TyCon Region);
+  ] in
   let rec helpP p =
     match p with
     | Program (decls, span) ->
-        let new_decls, errs = List.split (List.map helpD decls) in
+        let new_decls, errs = List.split (List.map (helpD_in builtin_types) decls) in
         (Program (new_decls, span), List.concat errs)
   (* and string_list_of_generics gs =
     List.map
@@ -87,7 +90,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
     | GBName (name, predicates, tag) ->
         let preds, errs = List.split (List.map (resolve_predicate env) predicates) in
         (GBName (name, preds, tag), List.concat errs)
-  and helpD decl = helpD_in [] decl
+  (* and helpD decl = helpD_in [] decl *)
   and helpImplD_in outer impl_d =
     match impl_d with
     | ImplDecl decl ->
@@ -108,13 +111,13 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         ( DFun (name, gens, new_args, new_body, call_type, ret_typ, span),
           List.concat gen_errs @ List.concat args_errs @ ret_errs @ body_errs )
     | DClass (name, params, supers, sigs, span) ->
-        let params_env = List.map (fun param -> (param, TyVar param)) params in
+        let params_env = outer @ List.map (fun param -> (param, TyVar param)) params in
         let new_supers, super_errs = List.split (List.map (resolve_predicate params_env) supers) in
         let new_sigs, sig_errs = List.split (List.map (helpSig params_env) sigs) in
         ( DClass (name, params, new_supers, new_sigs, span),
           List.concat super_errs @ List.concat sig_errs )
     | DInstance (generics, head, methods, span) ->
-        let inst_env = env_of_generics generics in
+        let inst_env = outer @ env_of_generics generics in
         let new_gens, gen_errs = List.split (List.map (helpGeneric inst_env) generics) in
         let new_head, head_errs = resolve_predicate inst_env head in
         let new_impls, impl_errs = List.split (List.map (helpImplD_in inst_env) methods) in
