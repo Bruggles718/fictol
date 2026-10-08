@@ -243,7 +243,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         const_of_int64 (typ_to_llvm_typ context typ) (Uint64.to_int64 n) (typ_to_llvm_signed typ)
     | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
     | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
-    | ImmLiteral (LitString s, (tag, typ)) -> build_global_stringptr s (gensym "string_literal") builder
+    | ImmLiteral (LitString s, (tag, typ)) -> build_global_stringptr s (sprintf "string_literal_%d" tag) builder
   and prim2_to_llvm_op op ltyp rtyp =
     let ltykind = get_tycon_tykind ltyp in
     let rtykind = get_tycon_tykind rtyp in
