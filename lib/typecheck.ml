@@ -67,6 +67,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
     ("bool", TyCon Bool);
     ("ref",  TyCon Reference);
     ("region", TyCon Region);
+    ("Static", TyApp (TyCon Region, [TyCon (RegionName "Static")]))
   ] in
   let rec helpP p =
     match p with
