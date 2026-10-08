@@ -185,9 +185,9 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | EIf (cond, thn, els, loc) ->
             EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
         | EId _ | ELiteral _ -> e
-        | EReference(body, loc) ->
-          EReference(monomorphize_expr body, loc)
-        | _ -> failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
+        | EReference (body, loc) -> EReference (monomorphize_expr body, loc)
+        | _ ->
+            failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in
       (* Non-generic functions are roots of the specialization graph.
          Generic functions themselves are templates and aren't emitted

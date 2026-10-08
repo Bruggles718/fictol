@@ -60,7 +60,8 @@ and 'a expr =
   (* | ELetRec of 'a binding list * 'a expr * 'a *)
   (* | EString of string * 'a *)
   | ETyApp of 'a expr * typ list * 'a
-  | EBorrow of 'a expr * string * string * 'a expr * 'a (* expr to borrow, name to bind it as, name of region, body, tag *)
+  | EBorrow of 'a expr * string * string * 'a expr * 'a
+    (* expr to borrow, name to bind it as, name of region, body, tag *)
   | EReference of 'a expr * 'a
 
 and 'a method_sig =

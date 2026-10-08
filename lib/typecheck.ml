@@ -55,15 +55,15 @@ let rec resolve_typ_path env (typ : typ) =
 let resolve_predicate (generic_env : (string * typ) list) (p : 'a predicate) =
   let args_typs_errs = List.map (fun arg -> resolve_typ_path generic_env arg) p.pred_args in
   let arg_typs, arg_errs = List.split args_typs_errs in
-  ({p with pred_args= arg_typs}, (List.concat arg_errs))
+  ({p with pred_args= arg_typs}, List.concat arg_errs)
 ;;
 
 let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallible =
   let rec helpP p =
     match p with
-    | Program (decls, span) -> 
-      let (new_decls, errs) = List.split (List.map helpD decls) in
-      (Program (new_decls, span), List.concat errs)
+    | Program (decls, span) ->
+        let new_decls, errs = List.split (List.map helpD decls) in
+        (Program (new_decls, span), List.concat errs)
   (* and string_list_of_generics gs =
     List.map
       (fun g ->
@@ -80,7 +80,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
     match g with
     | GBName (name, predicates, tag) ->
         let preds, errs = List.split (List.map (resolve_predicate env) predicates) in
-        (GBName (name, preds, tag), (List.concat errs))
+        (GBName (name, preds, tag), List.concat errs)
   and helpD decl = helpD_in [] decl
   and helpImplD_in outer impl_d =
     match impl_d with
@@ -100,20 +100,20 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         let ret_typ, ret_errs = resolve_typ_path generic_env typ in
         let new_body, body_errs = helpE generic_env body in
         ( DFun (name, gens, new_args, new_body, call_type, ret_typ, span),
-          ((List.concat gen_errs) @ (List.concat args_errs) @ ret_errs @ body_errs) )
+          List.concat gen_errs @ List.concat args_errs @ ret_errs @ body_errs )
     | DClass (name, params, supers, sigs, span) ->
         let params_env = List.map (fun param -> (param, TyVar param)) params in
         let new_supers, super_errs = List.split (List.map (resolve_predicate params_env) supers) in
         let new_sigs, sig_errs = List.split (List.map (helpSig params_env) sigs) in
         ( DClass (name, params, new_supers, new_sigs, span),
-          (List.concat super_errs) @ (List.concat sig_errs) )
+          List.concat super_errs @ List.concat sig_errs )
     | DInstance (generics, head, methods, span) ->
         let inst_env = env_of_generics generics in
         let new_gens, gen_errs = List.split (List.map (helpGeneric inst_env) generics) in
         let new_head, head_errs = resolve_predicate inst_env head in
         let new_impls, impl_errs = List.split (List.map (helpImplD_in inst_env) methods) in
         ( DInstance (new_gens, new_head, new_impls, span),
-          (List.concat gen_errs) @ head_errs @ (List.concat impl_errs) )
+          List.concat gen_errs @ head_errs @ List.concat impl_errs )
   and helpSig class_env s =
     let env = class_env @ env_of_generics s.ms_generics in
     let new_gens, gen_errs = List.split (List.map (helpGeneric env) s.ms_generics) in
@@ -127,7 +127,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
       | None -> (None, [])
     in
     ( {s with ms_generics= new_gens; ms_args= new_args; ms_ret= new_ret; ms_default= new_default},
-      List.concat gen_errs @ (List.concat arg_errs) @ ret_errs @ default_errs )
+      List.concat gen_errs @ List.concat arg_errs @ ret_errs @ default_errs )
   and helpBind env bind =
     match bind with
     | BName (name, shadow, typ, span) ->
@@ -169,20 +169,20 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         let new_l, l_errs = helpE env l in
         let new_r, r_errs = helpE env r in
         (EPrim2 (op, new_l, new_r, span), l_errs @ r_errs)
-    | EBorrow(borrowed_expr, ref_name, region, body, span) ->
-      let (new_borrowed_expr, be_errs) = helpE env borrowed_expr in
-      let new_env = (region, TyApp(TyCon(Region), [TyCon(RegionName(region))])) :: env in
-      let new_body, body_errs = helpE new_env body in
-      (EBorrow(new_borrowed_expr, ref_name, region, new_body, span), be_errs @ body_errs)
-    | EReference(body, span) ->
-      let new_body, body_errs = helpE env body in
-      (EReference(new_body, span), body_errs)
+    | EBorrow (borrowed_expr, ref_name, region, body, span) ->
+        let new_borrowed_expr, be_errs = helpE env borrowed_expr in
+        let new_env = (region, TyApp (TyCon Region, [TyCon (RegionName region)])) :: env in
+        let new_body, body_errs = helpE new_env body in
+        (EBorrow (new_borrowed_expr, ref_name, region, new_body, span), be_errs @ body_errs)
+    | EReference (body, span) ->
+        let new_body, body_errs = helpE env body in
+        (EReference (new_body, span), body_errs)
     | _ -> (expr, [])
   in
-  let (prog, errs) = helpP p in
+  let prog, errs = helpP p in
   match errs with
-  | [] -> Ok(prog)
-  | _ -> Error(errs)
+  | [] -> Ok prog
+  | _ -> Error errs
 ;;
 
 let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =
@@ -331,15 +331,15 @@ let rec unify (t1 : typ) (t2 : typ) (span : sourcespan) : typ subst =
       else
         failwith
           (sprintf "Unification failure: inconsistent type constants %s and %s at <%s>"
-            (string_of_typ t1) (string_of_typ t2) (string_of_sourcespan span) )
+             (string_of_typ t1) (string_of_typ t2) (string_of_sourcespan span) )
   | TyArrow (t1_args, t1_ret_ty, t1_call_type), TyArrow (t2_args, t2_ret_ty, t2_call_type)
     when t1_call_type = t2_call_type -> unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | TyApp (t1_ret_ty, t1_args), TyApp (t2_ret_ty, t2_args) ->
       unify_arrows t1_args t1_ret_ty t2_args t2_ret_ty
   | _ ->
       failwith
-        (sprintf "Unification failure: cannot unify %s and %s at <%s>"
-           (string_of_typ t1) (string_of_typ t2) (string_of_sourcespan span))
+        (sprintf "Unification failure: cannot unify %s and %s at <%s>" (string_of_typ t1)
+           (string_of_typ t2) (string_of_sourcespan span) )
 
 and unify_lists (ts1 : typ list) (ts2 : typ list) (span : sourcespan) : typ subst =
   match (ts1, ts2) with
@@ -1004,8 +1004,8 @@ let tag_of_expr (e : 'a expr) : 'a =
    |EId (_, t)
    |EApp (_, _, t)
    |ETyApp (_, _, t) -> t
-   | EBorrow(_, _, _, _, t) -> t
-   | EReference(_, t) -> t
+  | EBorrow (_, _, _, _, t) -> t
+  | EReference (_, t) -> t
 ;;
 
 let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
@@ -1045,9 +1045,9 @@ let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
   | EId (x, tag) -> EId (x, f tag)
   | EApp (fn, args, tag) -> EApp (go fn, List.map go args, f tag)
   | ETyApp (body, tys, tag) -> ETyApp (go body, tys, f tag)
-  | EBorrow(borrowed_expr, ref_name, region, body, tag) ->
-    EBorrow(go borrowed_expr, ref_name, region, go body, f tag)
-  | EReference(body, tag) -> EReference(go body, f tag)
+  | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
+      EBorrow (go borrowed_expr, ref_name, region, go body, f tag)
+  | EReference (body, tag) -> EReference (go body, f tag)
 ;;
 
 let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
@@ -1165,7 +1165,6 @@ type mono_state =
   { requested: (string, unit) Hashtbl.t;
     worklist: mono_request Queue.t;
     mutable emitted: typed_tag decl list }
-  
 
 let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
   let gensym_typ =
@@ -1288,9 +1287,10 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
    ===================================================================== *)
   let rec gen_blanks_in_typ typ =
     match typ with
-    | TyApp (ret_typ, args) -> TyApp(gen_blanks_in_typ ret_typ, List.map gen_blanks_in_typ args)
-    | TyArrow(args, ret_typ, call_type) -> TyArrow(List.map gen_blanks_in_typ args, gen_blanks_in_typ ret_typ, call_type)
-    | TyBlank _ -> TyVar(gensym_typ "T")
+    | TyApp (ret_typ, args) -> TyApp (gen_blanks_in_typ ret_typ, List.map gen_blanks_in_typ args)
+    | TyArrow (args, ret_typ, call_type) ->
+        TyArrow (List.map gen_blanks_in_typ args, gen_blanks_in_typ ret_typ, call_type)
+    | TyBlank _ -> TyVar (gensym_typ "T")
     | _ -> typ
   in
   let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
@@ -1391,9 +1391,10 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
             (printf "subst so far:\n%s\n" (ExtString.String.join "\n" (List.map (fun (s, typ) -> (sprintf "%s:%s" s (string_of_typ typ))) subst_so_far))); *)
               match x with
               | BName (name, shadow, typ, loc) ->
-                  let new_typ = match b_typ with
-                  | TyApp(TyCon(Reference), _) -> typ
-                  | _ -> gen_blanks_in_typ typ
+                  let new_typ =
+                    match b_typ with
+                    | TyApp (TyCon Reference, _) -> typ
+                    | _ -> gen_blanks_in_typ typ
                   in
                   (* let new_typ = gen_blanks_in_typ typ in *)
                   let unified_subst = unify new_typ b_typ loc in
@@ -1423,16 +1424,15 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let env = apply_subst_schenv clo_subst env in
         let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, (loc, ret_typ)) in
         infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
-    | EReference(body, loc) ->
-      let body_subst, body_typ, body_wanteds, new_body_expr = infer_exp_elab env body in
-      let ref_typ = TyApp(TyCon(Reference), [body_typ; TyApp(TyCon(Region), [TyVar(gensym_typ "RN")])]) in
-      let final_typ = apply_subst_typ body_subst ref_typ in
-      let final_constraints = apply_subst_wanteds body_subst body_wanteds in
-      (* EReference(new_body_expr, (loc, )) in *)
-      (body_subst, 
-      final_typ,
-      final_constraints,
-      EReference(new_body_expr, (loc, final_typ)))
+    | EReference (body, loc) ->
+        let body_subst, body_typ, body_wanteds, new_body_expr = infer_exp_elab env body in
+        let ref_typ =
+          TyApp (TyCon Reference, [body_typ; TyApp (TyCon Region, [TyVar (gensym_typ "RN")])])
+        in
+        let final_typ = apply_subst_typ body_subst ref_typ in
+        let final_constraints = apply_subst_wanteds body_subst body_wanteds in
+        (* EReference(new_body_expr, (loc, )) in *)
+        (body_subst, final_typ, final_constraints, EReference (new_body_expr, (loc, final_typ)))
     | _ -> failwith "bad"
   and infer_app_typ
       (make_expr : typed_tag expr list -> typ -> typed_tag expr)

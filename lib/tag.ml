@@ -82,8 +82,7 @@ let rename (p : (tag * typ) program) : (tag * typ) program =
         let binds', env' = helpBG env binds in
         let body' = helpE env' body in
         ELet (binds', body', tag)
-    | EReference (body, tag) ->
-      EReference(helpE env body, tag)
+    | EReference (body, tag) -> EReference (helpE env body, tag)
     | _ -> failwith (sprintf "Rename: unsupported expr %s" (string_of_expr e))
   in
   helpP [] p

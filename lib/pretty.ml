@@ -76,7 +76,7 @@ let name_of_op2 op =
 let rec string_of_tykind (t : tykind) =
   match t with
   | Region -> "region"
-  | RegionName (name) -> name
+  | RegionName name -> name
   | Reference -> "ref"
   | Bool -> "bool"
   | Skolem s -> "Skolem(" ^ s ^ ")"
@@ -194,17 +194,10 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
           (ExtString.String.join ", " (List.map string_of_expr args))
           (print_a a)
     | ETyApp (e, typs, a) -> string_of_expr e
-    | EBorrow(borrowed_expr, ref_name, region, body, a) ->
-      sprintf "(borrow %s as %s for %s in %s)%s"
-      (string_of_expr borrowed_expr)
-      ref_name
-      region
-      (string_of_expr body)
-      (print_a a)
-    | EReference(body, a) ->
-      sprintf "(reference of %s)%s"
-      (string_of_expr body)
-      (print_a a)
+    | EBorrow (borrowed_expr, ref_name, region, body, a) ->
+        sprintf "(borrow %s as %s for %s in %s)%s" (string_of_expr borrowed_expr) ref_name region
+          (string_of_expr body) (print_a a)
+    | EReference (body, a) -> sprintf "(reference of %s)%s" (string_of_expr body) (print_a a)
 ;;
 
 (* | ELetRec (binds, body, a) ->
@@ -338,10 +331,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     "..."
   else
     match c with
-    | CReference(body, a) -> 
-      sprintf "(reference of %s)%s"
-      (string_of_immexpr body)
-      (print_a a)
+    | CReference (body, a) -> sprintf "(reference of %s)%s" (string_of_immexpr body) (print_a a)
     | CPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_immexpr e) (print_a a)
     | CPrim2 (op, left, right, a) ->
         sprintf "(%s %s %s)%s" (string_of_immexpr left) (string_of_op2 op) (string_of_immexpr right)
