@@ -107,7 +107,7 @@ let desugar (p : sourcespan program) : sourcespan program =
                     tag ),
                 EReference (helpE borrowed_expr, tag),
                 tag ) ],
-            body,
+            helpE body,
             tag )
     | EReference (body, tag) -> EReference (helpE body, tag)
     (* | ELambda (binds, body, tag) ->

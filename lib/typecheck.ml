@@ -59,6 +59,12 @@ let resolve_predicate (generic_env : (string * typ) list) (p : 'a predicate) =
 ;;
 
 let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallible =
+  let gensym =
+    let next = ref 0 in
+    fun name ->
+      next := !next + 1;
+      sprintf "%s_%d" name !next
+  in
   let rec helpP p =
     match p with
     | Program (decls, span) ->
@@ -171,9 +177,10 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         (EPrim2 (op, new_l, new_r, span), l_errs @ r_errs)
     | EBorrow (borrowed_expr, ref_name, region, body, span) ->
         let new_borrowed_expr, be_errs = helpE env borrowed_expr in
-        let new_env = (region, TyApp (TyCon Region, [TyCon (RegionName region)])) :: env in
+        let new_reg_name = (gensym region) in
+        let new_env = (region, TyApp (TyCon Region, [TyCon (RegionName new_reg_name)])) :: env in
         let new_body, body_errs = helpE new_env body in
-        (EBorrow (new_borrowed_expr, ref_name, region, new_body, span), be_errs @ body_errs)
+        (EBorrow (new_borrowed_expr, ref_name, new_reg_name, new_body, span), be_errs @ body_errs)
     | EReference (body, span) ->
         let new_body, body_errs = helpE env body in
         (EReference (new_body, span), body_errs)
@@ -1433,7 +1440,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let final_constraints = apply_subst_wanteds body_subst body_wanteds in
         (* EReference(new_body_expr, (loc, )) in *)
         (body_subst, final_typ, final_constraints, EReference (new_body_expr, (loc, final_typ)))
-    | _ -> failwith "bad"
+    | _ -> failwith (sprintf "cannot type check %s" (string_of_expr e))
   and infer_app_typ
       (make_expr : typed_tag expr list -> typ -> typed_tag expr)
       (sch_subst : typ subst)
