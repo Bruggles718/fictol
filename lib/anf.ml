@@ -35,9 +35,9 @@ let anf (p : (tag * typ) program) : typ aprogram =
     | _ -> failwith "anf: invalid decl"
   and helpC (e : (tag * typ) expr) : typ cexpr * typ anf_bind list =
     match e with
-    | EReference (arg, (tag, typ)) ->
+    | EGetReference (arg, (tag, typ)) ->
         let arg_imm, arg_setup = helpI arg in
-        (CReference (arg_imm, typ), arg_setup)
+        (CGetReference (arg_imm, typ), arg_setup)
     | EPrim1 (op, arg, (tag, typ)) ->
         let arg_imm, arg_setup = helpI arg in
         (CPrim1 (op, arg_imm, typ), arg_setup)
@@ -78,10 +78,10 @@ let anf (p : (tag * typ) program) : typ aprogram =
         let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
-    | EReference (arg, (tag, typ)) ->
+    | EGetReference (arg, (tag, typ)) ->
         let tmp = sprintf "ref_%d" tag in
         let arg_imm, arg_setup = helpI arg in
-        (ImmId (tmp, typ), arg_setup @ [BLet (tmp, typ, CReference (arg_imm, typ))])
+        (ImmId (tmp, typ), arg_setup @ [BLet (tmp, typ, CGetReference (arg_imm, typ))])
     | EPrim1 (op, arg, (tag, typ)) ->
         let tmp = sprintf "unary_%d" tag in
         let arg_imm, arg_setup = helpI arg in
@@ -138,7 +138,7 @@ let rec map_tags_cexpr (f : 'a -> 'b) (c : 'a cexpr) : 'b cexpr =
   match c with
   | CIf (cond, then_, else_, tag) ->
       CIf (imm cond, map_tags_aexpr f then_, map_tags_aexpr f else_, f tag)
-  | CReference (arg, tag) -> CReference (imm arg, f tag)
+  | CGetReference (arg, tag) -> CGetReference (imm arg, f tag)
   | CPrim1 (op, arg, tag) -> CPrim1 (op, imm arg, f tag)
   | CPrim2 (op, left, right, tag) -> CPrim2 (op, imm left, imm right, f tag)
   | CApp (fn, args, tag) -> CApp (imm fn, List.map imm args, f tag)
@@ -174,7 +174,7 @@ let tag_of_cexpr (c : 'a cexpr) : 'a =
    |CPrim1 (_, _, tag)
    |CPrim2 (_, _, _, tag)
    |CApp (_, _, tag)
-   |CReference (_, tag) -> tag
+   |CGetReference (_, tag) -> tag
   | CImmExpr e -> tag_of_immexpr e
 ;;
 

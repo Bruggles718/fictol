@@ -105,11 +105,11 @@ let desugar (p : sourcespan program) : sourcespan program =
                       ( TyCon Reference,
                         [TyVar (gensym "T"); TyApp (TyCon Region, [TyCon (RegionName region)])] ),
                     tag ),
-                EReference (helpE borrowed_expr, tag),
+                EGetReference (helpE borrowed_expr, tag),
                 tag ) ],
             helpE body,
             tag )
-    | EReference (body, tag) -> EReference (helpE body, tag)
+    | EGetReference (body, tag) -> EGetReference (helpE body, tag)
     (* | ELambda (binds, body, tag) ->
         let expandBind bind =
           match bind with

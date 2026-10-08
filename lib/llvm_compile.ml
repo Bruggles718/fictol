@@ -132,7 +132,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
     | CPrim1 (op, body, (tag, typ)) ->
         let b = compile_immexpr env body in
         (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder
-    | CReference (body, (tag, typ)) -> (
+    | CGetReference (body, (tag, typ)) -> (
       match body with
       | ImmId (name, (tag, typ)) -> (
         match lookup_function name the_module with
@@ -204,7 +204,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         compile_aexpr_tail env thn llvm_fun;
         position_at_end els_bb builder;
         compile_aexpr_tail env els llvm_fun
-    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CReference _ ->
+    | CImmExpr _ | CPrim1 _ | CPrim2 _ | CGetReference _ ->
         let v = compile_cexpr env c llvm_fun in
         let _ = build_ret v builder in
         ()
@@ -243,6 +243,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         const_of_int64 (typ_to_llvm_typ context typ) (Uint64.to_int64 n) (typ_to_llvm_signed typ)
     | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
     | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
+    | ImmLiteral (LitString s, (tag, typ)) -> build_global_stringptr s (gensym "string_literal") builder
   and prim2_to_llvm_op op ltyp rtyp =
     let ltykind = get_tycon_tykind ltyp in
     let rtykind = get_tycon_tykind rtyp in

@@ -45,6 +45,8 @@ let t_i32 = TyCon (Int I32)
 
 let t_bool = TyCon Bool
 
+let t_str = TyApp( TyCon Reference, [TyCon (Char); TyApp (TyCon Region, [TyCon (RegionName "Static")])] )
+
 let rec find ls x =
   match ls with
   | [] -> raise (InternalCompilerError (sprintf "Name %s not found" x))

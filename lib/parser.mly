@@ -47,7 +47,7 @@ const :
     }
   | TRUE { ELiteral(LitBool(true), full_span()) }
   | FALSE { ELiteral(LitBool(false), full_span()) }
-  // | STRING { EString($1, full_span()) }
+  | STRING { ELiteral(LitString($1), full_span()) }
 
 prim1 :
   | ADD1 { Add1 }

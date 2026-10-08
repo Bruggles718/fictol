@@ -8,3 +8,4 @@ main
 test_fictol
 *.cache
 compile_commands.json
+compile_and_run.sh

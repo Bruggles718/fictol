@@ -40,6 +40,7 @@ and int_suffix =
 
 and lit =
   | LitInt of uint64 * int_suffix
+  | LitString of string
   (* | Float of float * 'a *)
   | LitBool of bool
 
@@ -62,7 +63,7 @@ and 'a expr =
   | ETyApp of 'a expr * typ list * 'a
   | EBorrow of 'a expr * string * string * 'a expr * 'a
     (* expr to borrow, name to bind it as, name of region, body, tag *)
-  | EReference of 'a expr * 'a
+  | EGetReference of 'a expr * 'a
 
 and 'a method_sig =
   { ms_name: string;
@@ -99,7 +100,7 @@ and 'a cexpr =
   | CPrim2 of prim2 * 'a immexpr * 'a immexpr * 'a
   | CApp of 'a immexpr * 'a immexpr list * 'a
   | CImmExpr of 'a immexpr
-  | CReference of 'a immexpr * 'a
+  | CGetReference of 'a immexpr * 'a
 (* for when you just need an immediate value *)
 (* | CTuple of 'a immexpr list * 'a
   | CGetItem of 'a immexpr * 'a immexpr * 'a

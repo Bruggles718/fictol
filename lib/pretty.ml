@@ -79,6 +79,7 @@ let rec string_of_tykind (t : tykind) =
   | RegionName name -> name
   | Reference -> "ref"
   | Bool -> "bool"
+  | Char -> "char"
   | Skolem s -> "Skolem(" ^ s ^ ")"
   | Int w -> (
     match w with
@@ -175,6 +176,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ENumber (n, a) -> Int64.to_string n ^ print_a a
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a *)
+    | ELiteral (LitString (s), a) -> s ^ (print_a a)
     | ELiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
     | ELiteral (LitBool b, a) -> string_of_bool b ^ print_a a
     | EId (x, a) -> x ^ print_a a
@@ -197,7 +199,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | EBorrow (borrowed_expr, ref_name, region, body, a) ->
         sprintf "(borrow %s as %s for %s in %s)%s" (string_of_expr borrowed_expr) ref_name region
           (string_of_expr body) (print_a a)
-    | EReference (body, a) -> sprintf "(reference of %s)%s" (string_of_expr body) (print_a a)
+    | EGetReference (body, a) -> sprintf "(reference of %s)%s" (string_of_expr body) (print_a a)
 ;;
 
 (* | ELetRec (binds, body, a) ->
@@ -331,7 +333,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     "..."
   else
     match c with
-    | CReference (body, a) -> sprintf "(reference of %s)%s" (string_of_immexpr body) (print_a a)
+    | CGetReference (body, a) -> sprintf "(reference of %s)%s" (string_of_immexpr body) (print_a a)
     | CPrim1 (op, e, a) -> sprintf "%s(%s)%s" (string_of_op1 op) (string_of_immexpr e) (print_a a)
     | CPrim2 (op, left, right, a) ->
         sprintf "(%s %s %s)%s" (string_of_immexpr left) (string_of_op2 op) (string_of_immexpr right)
@@ -347,6 +349,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
+  | ImmLiteral (LitString (s), a) -> s ^ (print_a a)
   | ImmLiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
   | ImmLiteral (LitBool b, a) -> string_of_bool b ^ print_a a
   | ImmId (x, a) -> x ^ print_a a

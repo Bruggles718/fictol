@@ -61,6 +61,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
     ("i32",  TyCon (Int I32));
     ("i64",  TyCon (Int I64));
     ("u8",   TyCon (UInt U8));
+    ("char",   TyCon (Char));
     ("u16",  TyCon (UInt U16));
     ("u32",  TyCon (UInt U32));
     ("u64",  TyCon (UInt U64));
@@ -185,9 +186,9 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         let new_env = (region, TyApp (TyCon Region, [TyCon (RegionName new_reg_name)])) :: env in
         let new_body, body_errs = helpE new_env body in
         (EBorrow (new_borrowed_expr, ref_name, new_reg_name, new_body, span), be_errs @ body_errs)
-    | EReference (body, span) ->
+    | EGetReference (body, span) ->
         let new_body, body_errs = helpE env body in
-        (EReference (new_body, span), body_errs)
+        (EGetReference (new_body, span), body_errs)
     | _ -> (expr, [])
   in
   let prog, errs = helpP p in
@@ -1016,7 +1017,7 @@ let tag_of_expr (e : 'a expr) : 'a =
    |EApp (_, _, t)
    |ETyApp (_, _, t) -> t
   | EBorrow (_, _, _, _, t) -> t
-  | EReference (_, t) -> t
+  | EGetReference (_, t) -> t
 ;;
 
 let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
@@ -1058,7 +1059,7 @@ let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
   | ETyApp (body, tys, tag) -> ETyApp (go body, tys, f tag)
   | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
       EBorrow (go borrowed_expr, ref_name, region, go body, f tag)
-  | EReference (body, tag) -> EReference (go body, f tag)
+  | EGetReference (body, tag) -> EGetReference (go body, f tag)
 ;;
 
 let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
@@ -1307,6 +1308,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
   let rec infer_exp_elab (env : sourcespan scheme envt) (e : sourcespan expr) :
       typ subst * typ * sourcespan wanted list * typed_tag expr =
     match e with
+    | ELiteral (LitString s, loc) -> ([], t_str, [], ELiteral (LitString s, (loc, t_str)))
     | ELiteral (LitBool b, loc) -> ([], t_bool, [], ELiteral (LitBool b, (loc, t_bool)))
     | ELiteral (LitInt (n, suffix), loc) -> (
       match suffix with
@@ -1435,15 +1437,15 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let env = apply_subst_schenv clo_subst env in
         let make_expr new_args ret_typ = EApp (new_clo_expr, new_args, (loc, ret_typ)) in
         infer_app_typ make_expr clo_subst clo_wanted clo_typ args env loc
-    | EReference (body, loc) ->
+    | EGetReference (body, loc) ->
         let body_subst, body_typ, body_wanteds, new_body_expr = infer_exp_elab env body in
         let ref_typ =
           TyApp (TyCon Reference, [body_typ; TyApp (TyCon Region, [TyVar (gensym_typ "RN")])])
         in
         let final_typ = apply_subst_typ body_subst ref_typ in
         let final_constraints = apply_subst_wanteds body_subst body_wanteds in
-        (* EReference(new_body_expr, (loc, )) in *)
-        (body_subst, final_typ, final_constraints, EReference (new_body_expr, (loc, final_typ)))
+        (* EGetReference(new_body_expr, (loc, )) in *)
+        (body_subst, final_typ, final_constraints, EGetReference (new_body_expr, (loc, final_typ)))
     | _ -> failwith (sprintf "cannot type check %s" (string_of_expr e))
   and infer_app_typ
       (make_expr : typed_tag expr list -> typ -> typed_tag expr)

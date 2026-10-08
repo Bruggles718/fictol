@@ -185,7 +185,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | EIf (cond, thn, els, loc) ->
             EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
         | EId _ | ELiteral _ -> e
-        | EReference (body, loc) -> EReference (monomorphize_expr body, loc)
+        | EGetReference (body, loc) -> EGetReference (monomorphize_expr body, loc)
         | _ ->
             failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in

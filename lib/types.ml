@@ -23,6 +23,7 @@ type tykind =
   | Int of signed_int_width
   | UInt of unsigned_int_width
   | Bool
+  | Char
   | Region
   | RegionName of string
   | Reference (* non-owning pointer *)
