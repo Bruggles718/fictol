@@ -20,7 +20,9 @@ exception Overflow of uint64 * sourcespan
 
 exception CallArity of int * int * sourcespan (* intended arity, actual arity, where called *)
 
-exception SuperclassArity of string * int * int * sourcespan (* intended arity, actual arity, where called *)
+exception
+  SuperclassArity of
+    string * int * int * sourcespan (* intended arity, actual arity, where called *)
 
 exception NotYetImplemented of string (* TODO: Message to show *)
 
@@ -91,10 +93,13 @@ let print_error exn =
       sprintf "The function %s, defined at %s, has %d arguments but only %d types provided" name
         (string_of_sourcespan loc) num_args num_types
   | UnknownType (TyPath (path, loc)) ->
-      sprintf "Cannot resolve type %s at <%s>" (ExtString.String.join "::" path) (string_of_sourcespan loc)
+      sprintf "Cannot resolve type %s at <%s>" (ExtString.String.join "::" path)
+        (string_of_sourcespan loc)
   | NoTypeAnnotation (x, loc) ->
       sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
-  | MalformedType (typ, loc, explanation) -> sprintf "Malformed type %s at <%s>: %s" (string_of_typ typ) (string_of_sourcespan loc) (explanation) 
+  | MalformedType (typ, loc, explanation) ->
+      sprintf "Malformed type %s at <%s>: %s" (string_of_typ typ) (string_of_sourcespan loc)
+        explanation
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 

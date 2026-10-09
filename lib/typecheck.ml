@@ -20,8 +20,8 @@ let rec resolve_typ_path env (typ : typ) =
         if Option.is_some found_opt then
           (Option.get found_opt, [])
         else
-          (typ, [UnknownType (typ)])
-    | _ -> (typ, [UnknownType (typ)]) )
+          (typ, [UnknownType typ])
+    | _ -> (typ, [UnknownType typ]) )
   | TyVar name -> (TyVar name, [])
   | TyCon name -> (TyCon name, [])
   | TyArrow (args, ret_typ, call_type) ->
@@ -55,21 +55,20 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
       sprintf "%s_%d" name !next
   in
   let builtin_types =
-  [
-    ("i8",   TyCon (Int I8));
-    ("i16",  TyCon (Int I16));
-    ("i32",  TyCon (Int I32));
-    ("i64",  TyCon (Int I64));
-    ("u8",   TyCon (UInt U8));
-    ("char",   TyCon (Char));
-    ("u16",  TyCon (UInt U16));
-    ("u32",  TyCon (UInt U32));
-    ("u64",  TyCon (UInt U64));
-    ("bool", TyCon Bool);
-    ("ref",  TyCon Reference);
-    ("region", TyCon Region);
-    ("Static", TyApp (TyCon Region, [TyCon (RegionName "Static")]))
-  ] in
+    [ ("i8", TyCon (Int I8));
+      ("i16", TyCon (Int I16));
+      ("i32", TyCon (Int I32));
+      ("i64", TyCon (Int I64));
+      ("u8", TyCon (UInt U8));
+      ("char", TyCon Char);
+      ("u16", TyCon (UInt U16));
+      ("u32", TyCon (UInt U32));
+      ("u64", TyCon (UInt U64));
+      ("bool", TyCon Bool);
+      ("ref", TyCon Reference);
+      ("region", TyCon Region);
+      ("Static", TyApp (TyCon Region, [TyCon (RegionName "Static")])) ]
+  in
   let rec helpP p =
     match p with
     | Program (decls, span) ->
@@ -102,13 +101,10 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
   and helpD_in outer decl =
     (* `outer` = type variables already in scope (instance generics for methods) *)
     match decl with
-    | DExtern(name, args, call_type, typ, span) -> 
-      let new_args, args_errs =
-        List.split (List.map (fun arg -> helpBind outer arg) args)
-      in
-      let ret_typ, ret_errs = resolve_typ_path outer typ in
-      ( DExtern (name, new_args, call_type, ret_typ, span),
-          List.concat args_errs @ ret_errs )
+    | DExtern (name, args, call_type, typ, span) ->
+        let new_args, args_errs = List.split (List.map (fun arg -> helpBind outer arg) args) in
+        let ret_typ, ret_errs = resolve_typ_path outer typ in
+        (DExtern (name, new_args, call_type, ret_typ, span), List.concat args_errs @ ret_errs)
     | DFun (name, generics, args, body, call_type, typ, span) ->
         let generic_env = outer @ env_of_generics generics in
         let new_args, args_errs =
@@ -189,7 +185,7 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         (EPrim2 (op, new_l, new_r, span), l_errs @ r_errs)
     | EBorrow (borrowed_expr, ref_name, region, body, span) ->
         let new_borrowed_expr, be_errs = helpE env borrowed_expr in
-        let new_reg_name = (gensym region) in
+        let new_reg_name = gensym region in
         let new_env = (region, TyApp (TyCon Region, [TyCon (RegionName new_reg_name)])) :: env in
         let new_body, body_errs = helpE new_env body in
         (EBorrow (new_borrowed_expr, ref_name, new_reg_name, new_body, span), be_errs @ body_errs)
@@ -900,8 +896,8 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
 
 let scheme_of_decl (d : 'a decl) : 'a scheme =
   match d with
-  | DExtern(name, args, call_type, ret_typ, _) ->
-    let arg_tvs =
+  | DExtern (name, args, call_type, ret_typ, _) ->
+      let arg_tvs =
         List.map
           (fun arg ->
             match arg with
@@ -909,10 +905,7 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
             | _ -> ice "Scheme of decl failure: Unsupported binding type" )
           args
       in
-      SForall
-        ( [],
-          [],
-          TyArrow (arg_tvs, ret_typ, call_type) )
+      SForall ([], [], TyArrow (arg_tvs, ret_typ, call_type))
   | DFun (name, generics, args, _, call_type, ret_typ, _) ->
       let arg_tvs =
         List.map
@@ -1181,8 +1174,7 @@ let method_sig_of_decl d =
 
 let name_of_dfun d =
   match d with
-  | DExtern (name, _, _, _, _)
-  | DFun (name, _, _, _, _, _, _) -> name
+  | DExtern (name, _, _, _, _) | DFun (name, _, _, _, _, _, _) -> name
   | _ -> ice "Name of DFun failure: given non DFun"
 ;;
 
@@ -1527,7 +1519,12 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
     let skolem_subst, givens, fun_typ = skolemize scheme in
     match d with
     | DExtern (name, args, call_type, ret_typ, loc) ->
-      DExtern (name, List.map lift_bind args, call_type, ret_typ, (loc, TyArrow(get_bind_typs args, ret_typ, call_type)))
+        DExtern
+          ( name,
+            List.map lift_bind args,
+            call_type,
+            ret_typ,
+            (loc, TyArrow (get_bind_typs args, ret_typ, call_type)) )
     | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) -> (
       match fun_typ with
       | TyArrow (fun_args, fun_ret_typ, ct) ->

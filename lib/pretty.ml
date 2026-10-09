@@ -176,8 +176,8 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ENumber (n, a) -> Int64.to_string n ^ print_a a
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a *)
-    | ELiteral (LitString (s), a) -> s ^ (print_a a)
-    | ELiteral (LitChar (c), a) -> (String.of_char c) ^ (print_a a)
+    | ELiteral (LitString s, a) -> s ^ print_a a
+    | ELiteral (LitChar c, a) -> String.of_char c ^ print_a a
     | ELiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
     | ELiteral (LitBool b, a) -> string_of_bool b ^ print_a a
     | EId (x, a) -> x ^ print_a a
@@ -253,7 +253,7 @@ let rec string_of_impl_decl_with depth print_a impl_d =
 and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
   | DExtern (name, args, call_type, typ, a) ->
-    string_of_func_sig_with depth print_a name [] args None call_type typ a
+      string_of_func_sig_with depth print_a name [] args None call_type typ a
   | DFun (name, generics, args, body, call_type, typ, a) ->
       string_of_func_sig_with depth print_a name generics args (Some body) call_type typ a
   | DClass (name, params, superclasses, method_sigs, a) ->
@@ -318,7 +318,7 @@ let rec string_of_aexpr_with (depth : int) (print_a : 'a -> string) (e : 'a aexp
 and string_of_adecl_with depth print_a decl =
   match decl with
   | AExtern (name, args, call_type, ret_typ, a) ->
-    let binds = List.map (fun (b_name, b_a) -> sprintf "%s%s" b_name (print_a b_a)) args in
+      let binds = List.map (fun (b_name, b_a) -> sprintf "%s%s" b_name (print_a b_a)) args in
       sprintf "(def %s(%s)%s)%s" name
         (ExtString.String.join ", " binds)
         (let typ_str = string_of_typ ret_typ in
@@ -362,8 +362,8 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
-  | ImmLiteral (LitString (s), a) -> s ^ (print_a a)
-  | ImmLiteral (LitChar (c), a) -> (String.of_char c) ^ (print_a a)
+  | ImmLiteral (LitString s, a) -> s ^ print_a a
+  | ImmLiteral (LitChar c, a) -> String.of_char c ^ print_a a
   | ImmLiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
   | ImmLiteral (LitBool b, a) -> string_of_bool b ^ print_a a
   | ImmId (x, a) -> x ^ print_a a

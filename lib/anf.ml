@@ -198,8 +198,7 @@ let tag_of_aexpr (a : 'a aexpr) : 'a =
 
 let tag_of_adecl (d : 'a adecl) : 'a =
   match d with
-  | AExtern (_, _, _, _, tag)
-  | AFun (_, _, _, _, _, tag) -> tag
+  | AExtern (_, _, _, _, tag) | AFun (_, _, _, _, _, tag) -> tag
 ;;
 
 let tag_of_aprogram (p : 'a aprogram) : 'a =

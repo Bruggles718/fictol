@@ -186,8 +186,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
             EIf (monomorphize_expr cond, monomorphize_expr thn, monomorphize_expr els, loc)
         | EId _ | ELiteral _ -> e
         | EGetReference (body, loc) -> EGetReference (monomorphize_expr body, loc)
-        | _ ->
-            ice (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
+        | _ -> ice (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in
       (* Non-generic functions are roots of the specialization graph.
          Generic functions themselves are templates and aren't emitted
@@ -196,8 +195,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         List.filter_map
           (fun d ->
             match d with
-            | DExtern (name, args, call_type, ret_typ, loc) ->
-              Some (d)
+            | DExtern (name, args, call_type, ret_typ, loc) -> Some d
             | DFun (name, [], args, body, call_type, ret_typ, loc) ->
                 let new_body = monomorphize_expr body in
                 Some (DFun (name, [], args, new_body, call_type, ret_typ, loc))

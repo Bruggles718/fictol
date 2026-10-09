@@ -101,7 +101,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
   and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
     match f with
     | AExtern (name, binds, call_type, ret_typ, (tag, typ))
-    | AFun (name, binds, _, call_type, ret_typ, (tag, typ)) ->
+     |AFun (name, binds, _, call_type, ret_typ, (tag, typ)) ->
         let llvm_args =
           Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ context b_typ) binds)
         in
@@ -248,7 +248,8 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         const_of_int64 (typ_to_llvm_typ context typ) (Uint64.to_int64 n) (typ_to_llvm_signed typ)
     | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
     | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
-    | ImmLiteral (LitString s, (tag, typ)) -> build_global_stringptr s (sprintf "string_literal_%d" tag) builder
+    | ImmLiteral (LitString s, (tag, typ)) ->
+        build_global_stringptr s (sprintf "string_literal_%d" tag) builder
     | ImmLiteral (LitChar c, (tag, typ)) -> const_int (i8_type context) (int_of_char c)
   and prim2_to_llvm_op op ltyp rtyp =
     let ltykind = get_tycon_tykind ltyp in

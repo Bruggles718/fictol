@@ -19,28 +19,33 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   and loc_typ_of_bind bind =
     match bind with
     | BName (_, _, typ, loc) -> (loc, typ)
-    | BBlank loc -> loc, (TyBlank loc)
-  and wf_typ loc typ = 
+    | BBlank loc -> (loc, TyBlank loc)
+  and wf_typ loc typ =
     match typ with
-    | TyArrow(args, ret, _) -> (List.concat (List.map (wf_typ loc) args)) @ (wf_typ loc ret)
-    | TyApp(TyCon(Reference), ref_args) -> (
+    | TyArrow (args, ret, _) -> List.concat (List.map (wf_typ loc) args) @ wf_typ loc ret
+    | TyApp (TyCon Reference, ref_args) -> (
       match ref_args with
       | [_; maybe_region] -> (
-          match maybe_region with
-          | TyVar _
-          | TyApp(TyCon(Region), [TyCon(RegionName(_))]) -> []
-          | _ -> 
-            let msg = (sprintf "The second type argument of a Reference expects a region, but was given %s" (string_of_typ maybe_region)) in
-            [MalformedType(typ, loc, msg)]
-        )
-      | _ -> [MalformedType(typ, loc, (sprintf "Reference expects 2 type arguments, but was given %d" (List.length ref_args)))]
-      )
+        match maybe_region with
+        | TyVar _ | TyApp (TyCon Region, [TyCon (RegionName _)]) -> []
+        | _ ->
+            let msg =
+              sprintf "The second type argument of a Reference expects a region, but was given %s"
+                (string_of_typ maybe_region)
+            in
+            [MalformedType (typ, loc, msg)] )
+      | _ ->
+          [ MalformedType
+              ( typ,
+                loc,
+                sprintf "Reference expects 2 type arguments, but was given %d"
+                  (List.length ref_args) ) ] )
     (* Eventually, this should check that the correct number of type args are applied to a generic ADT *)
-    | TyApp(ret, args) -> (List.concat (List.map (wf_typ loc) args)) @ (wf_typ loc ret)
+    | TyApp (ret, args) -> List.concat (List.map (wf_typ loc) args) @ wf_typ loc ret
     | _ -> []
   and binding_errs (scope_env, shadow_env, err_lst) x body_err =
     let adding_to_env = string_list_from_bind x in
-    let (loc, typ) = loc_typ_of_bind x in
+    let loc, typ = loc_typ_of_bind x in
     let typ_errs = wf_typ loc typ in
     (* try
       let dups =
@@ -225,18 +230,18 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
            (fun i d ->
              match d with
              | DExtern (name, args, ct, typ, loc) ->
-              let ct_errs = (
-                match ct with
-                | Extern _ -> []
-                | _ -> [Unsupported("Function declared must be extern", loc)]
-              ) in
-              let arg_errs = List.concat (List.map fun_args_errs args) in
-              let ret_typ_err =
-                match typ with
-                | TyBlank _ -> [NoTypeAnnotation (name ^ " return type", loc)]
-                | _ -> []
-              in
-              ct_errs @ arg_errs @ ret_typ_err
+                 let ct_errs =
+                   match ct with
+                   | Extern _ -> []
+                   | _ -> [Unsupported ("Function declared must be extern", loc)]
+                 in
+                 let arg_errs = List.concat (List.map fun_args_errs args) in
+                 let ret_typ_err =
+                   match typ with
+                   | TyBlank _ -> [NoTypeAnnotation (name ^ " return type", loc)]
+                   | _ -> []
+                 in
+                 ct_errs @ arg_errs @ ret_typ_err
              | DFun (name, generics, _, _, ct, typ, loc) -> (
                  (* every function name except this decl's own *)
                  let others = List.filteri (fun j _ -> j <> i) decls in
@@ -252,8 +257,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
            decls )
   and get_new_env decls =
     match decls with
-    | DExtern (name, _, ct, typ, loc) :: rest
-    | DFun (name, _, _, _, ct, typ, loc) :: rest -> (name, loc) :: get_new_env rest
+    | DExtern (name, _, ct, typ, loc) :: rest | DFun (name, _, _, _, ct, typ, loc) :: rest ->
+        (name, loc) :: get_new_env rest
     | _ :: rest -> get_new_env rest
     | [] -> []
   and get_dup_class_errs decls =

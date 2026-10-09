@@ -45,9 +45,11 @@ let t_i32 = TyCon (Int I32)
 
 let t_bool = TyCon Bool
 
-let t_str = TyApp( TyCon Reference, [TyCon (Char); TyApp (TyCon Region, [TyCon (RegionName "Static")])] )
+let t_str =
+  TyApp (TyCon Reference, [TyCon Char; TyApp (TyCon Region, [TyCon (RegionName "Static")])])
+;;
 
-let t_char = TyCon(Char)
+let t_char = TyCon Char
 
 let rec find ls x =
   match ls with
@@ -69,9 +71,7 @@ let rec find_tag ls (i : tag) =
         find_tag rest i
 ;;
 
-let ice msg = 
-  (raise (InternalCompilerError (msg)))
-;;
+let ice msg = raise (InternalCompilerError msg)
 
 let predicates_of_generic_bind g =
   match g with
