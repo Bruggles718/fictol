@@ -92,6 +92,7 @@ rule token = parse
   | "for" { FOR }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | '"' { Buffer.clear strbuf; string_literal lexbuf }
+  | '\'' { char_literal lexbuf }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }
 
@@ -105,3 +106,13 @@ and string_literal = parse
   | '\n' { failwith "Unterminated string literal" }
   | eof { failwith "Unterminated string literal (EOF)" }
   | _ as c { Buffer.add_char strbuf c; string_literal lexbuf }
+
+and char_literal = parse
+  | '\\' 'n' '\'' { CHAR ('\n') }
+  | '\\' 't' '\'' { CHAR ('\t') }
+  | '\\' '\\' '\'' { CHAR('\\') }
+  | '\\' '\'' '\'' { CHAR('\'') }
+  | ('\\' _ as c) '\'' { CHAR ((String.get c 0)) }
+  | _ as c '\'' { CHAR (c) }
+  | eof { failwith "Unterminated char literal (EOF)" }
+  | _ { failwith "Unterminated char literal" }

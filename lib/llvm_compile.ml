@@ -25,6 +25,7 @@ let rec typ_to_llvm_typ context typ =
     | UInt U32 -> i32_type context
     | UInt U64 -> i64_type context
     | Bool -> i1_type context
+    | Char -> i8_type context
     | _ -> ice "Typ to llvm typ failure: unsupported tykind" )
   | TyApp (TyCon Reference, _) -> pointer_type context
   | TyArrow _ -> pointer_type context
@@ -244,6 +245,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
     | ImmLiteral (LitBool true, (tag, typ)) -> const_int (i1_type context) 1
     | ImmLiteral (LitBool false, (tag, typ)) -> const_int (i1_type context) 0
     | ImmLiteral (LitString s, (tag, typ)) -> build_global_stringptr s (sprintf "string_literal_%d" tag) builder
+    | ImmLiteral (LitChar c, (tag, typ)) -> const_int (i8_type context) (int_of_char c)
   and prim2_to_llvm_op op ltyp rtyp =
     let ltykind = get_tycon_tykind ltyp in
     let rtykind = get_tycon_tykind rtyp in

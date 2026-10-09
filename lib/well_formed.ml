@@ -27,6 +27,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       match ref_args with
       | [_; maybe_region] -> (
           match maybe_region with
+          | TyVar _
           | TyApp(TyCon(Region), [TyCon(RegionName(_))]) -> []
           | _ -> 
             let msg = (sprintf "The second type argument of a Reference expects a region, but was given %s" (string_of_typ maybe_region)) in

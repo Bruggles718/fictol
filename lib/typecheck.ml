@@ -1309,6 +1309,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
       typ subst * typ * sourcespan wanted list * typed_tag expr =
     match e with
     | ELiteral (LitString s, loc) -> ([], t_str, [], ELiteral (LitString s, (loc, t_str)))
+    | ELiteral (LitChar c, loc) -> ([], t_char, [], ELiteral (LitChar c, (loc, t_char)))
     | ELiteral (LitBool b, loc) -> ([], t_bool, [], ELiteral (LitBool b, (loc, t_bool)))
     | ELiteral (LitInt (n, suffix), loc) -> (
       match suffix with

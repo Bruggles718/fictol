@@ -41,6 +41,7 @@ and int_suffix =
 and lit =
   | LitInt of uint64 * int_suffix
   | LitString of string
+  | LitChar of char
   (* | Float of float * 'a *)
   | LitBool of bool
 

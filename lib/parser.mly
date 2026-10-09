@@ -8,6 +8,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %}
 
 %token <string> STRING
+%token <char> CHAR
 %token <Stdint.uint64 * string> INT
 %token <string> ID
 %token BORROW AS FOR TYPECLASS INSTANCE EXTENDS ARROW EXTERN LEN DOT DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES DIVIDE IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE EQEQ LESSNOSPACE LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END REC UNDERSCORE
@@ -48,6 +49,7 @@ const :
   | TRUE { ELiteral(LitBool(true), full_span()) }
   | FALSE { ELiteral(LitBool(false), full_span()) }
   | STRING { ELiteral(LitString($1), full_span()) }
+  | CHAR { ELiteral(LitChar($1), full_span())}
 
 prim1 :
   | ADD1 { Add1 }

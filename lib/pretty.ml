@@ -177,6 +177,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a *)
     | ELiteral (LitString (s), a) -> s ^ (print_a a)
+    | ELiteral (LitChar (c), a) -> (String.of_char c) ^ (print_a a)
     | ELiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
     | ELiteral (LitBool b, a) -> string_of_bool b ^ print_a a
     | EId (x, a) -> x ^ print_a a
@@ -350,6 +351,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
   | ImmLiteral (LitString (s), a) -> s ^ (print_a a)
+  | ImmLiteral (LitChar (c), a) -> (String.of_char c) ^ (print_a a)
   | ImmLiteral (LitInt (n, suff), a) -> Uint64.to_string n ^ print_a a
   | ImmLiteral (LitBool b, a) -> string_of_bool b ^ print_a a
   | ImmId (x, a) -> x ^ print_a a
