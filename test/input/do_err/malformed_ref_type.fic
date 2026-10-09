@@ -1,0 +1,5 @@
+extern "C" def test_entry() -> i32:
+    let x: ref<i32, i32> = 32 in
+    let y: ref<i32, bool, bool> = 32 in
+    let z: ref<char, Static> = "good ref\n" in
+    0

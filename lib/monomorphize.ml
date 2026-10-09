@@ -26,7 +26,7 @@ let rec typ_to_symbol (t : typ) : string =
       ^ "$"
       ^ ExtString.String.join "." (List.map string_of_typ generic_param_ty_lst)
       ^ "$"
-  | _ -> failwith (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (string_of_typ t))
+  | _ -> ice (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (string_of_typ t))
 ;;
 
 let mangle_name (base : string) (type_args : typ list) : string =
@@ -34,7 +34,7 @@ let mangle_name (base : string) (type_args : typ list) : string =
 ;;
 
 let resolve_method_call (meth : string) (type_args : typ list) : mono_resolution =
-  let ice msg = failwith (sprintf "Resolve method call failure: %s" msg) in
+  let ice msg = ice (sprintf "Resolve method call failure: %s" msg) in
   let split_at n l =
     let rec go n acc l =
       match l with
@@ -100,7 +100,7 @@ let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : t
           call_type,
           sub ret_typ,
           (loc, sub fun_typ) )
-  | _ -> failwith "Specialize decl failure: given non DFun"
+  | _ -> ice "Specialize decl failure: given non DFun"
 ;;
 
 let monomorphize (p : typed_tag program) : typed_tag program =
@@ -119,7 +119,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
             funs
         with
         | Some d -> d
-        | None -> failwith (sprintf "Monomorphize failure: could not find function %s" name)
+        | None -> ice (sprintf "Monomorphize failure: could not find function %s" name)
       in
       let enqueue (template : typed_tag decl) (subst : typ subst) (new_name : string) =
         if not (Hashtbl.mem st.requested new_name) then begin
@@ -163,11 +163,11 @@ let monomorphize (p : typed_tag program) : typed_tag program =
                 let generic_binds =
                   match template with
                   | DFun (_, gs, _, _, _, _, _) -> gs
-                  | _ -> failwith "Monomorphize failure: template is not a DFun"
+                  | _ -> ice "Monomorphize failure: template is not a DFun"
                 in
                 let generic_names = List.map name_of_generic_bind generic_binds in
                 if List.length generic_names <> List.length tys then
-                  failwith
+                  ice
                     (sprintf "Monomorphize failure: %s expects %d type argument(s), got %d" f_name
                        (List.length generic_names) (List.length tys) );
                 let subst = List.combine generic_names tys in
@@ -187,7 +187,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         | EId _ | ELiteral _ -> e
         | EGetReference (body, loc) -> EGetReference (monomorphize_expr body, loc)
         | _ ->
-            failwith (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
+            ice (sprintf "Monomorphize failure: unsupported expression %s" (string_of_expr e))
       in
       (* Non-generic functions are roots of the specialization graph.
          Generic functions themselves are templates and aren't emitted
@@ -212,7 +212,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
             let new_body = monomorphize_expr body in
             st.emitted <-
               DFun (name, generics, args, new_body, call_type, ret_typ, loc) :: st.emitted
-        | _ -> failwith "Monomorphize failure: specialization was not a DFun"
+        | _ -> ice "Monomorphize failure: specialization was not a DFun"
       done;
       Program (roots @ List.rev st.emitted, tag)
 ;;

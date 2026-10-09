@@ -67,6 +67,10 @@ let rec find_tag ls (i : tag) =
         find_tag rest i
 ;;
 
+let ice msg = 
+  (raise (InternalCompilerError (msg)))
+;;
+
 let predicates_of_generic_bind g =
   match g with
   | GBName (name, preds, tag) -> preds
@@ -81,7 +85,7 @@ type scope_info = sourcespan * int option * int option
 
 (* =====================================================================
    TYPE CLASSES, SECTION A: errors, global tables, front-end stubs.
-   Everything in sections A, B and C is either a stub (failwith "TODO") or
+   Everything in sections A, B and C is either a stub (ice "TODO") or
    unused by the existing pipeline until you wire it in, so the compiler
    behaves exactly as before. See typeclasses_outline.ml for the design.
    ===================================================================== *)
@@ -218,7 +222,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       |> List.map (fun maybe_op ->
           match maybe_op with
           | Some res -> res
-          | None -> failwith "seriously what??" ) )
+          | None -> ice "seriously what??" ) )
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" bool_type] in
@@ -242,12 +246,12 @@ let add_builtins (p : sourcespan program) : sourcespan program =
     | "ge" -> GreaterEq
     | "lt" -> Less
     | "le" -> LessEq
-    | _ -> failwith "not prim2, what??"
+    | _ -> ice "not prim2, what??"
   in
   let name_to_prim1_op name =
     match name with
     | "neg" -> Neg
-    | _ -> failwith "not prim1, what??"
+    | _ -> ice "not prim1, what??"
   in
   let inst_prim_for_typ cls typ =
     match cls with
@@ -264,7 +268,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
             method_sigs
         in
         DInstance ([], {pred_class= name; pred_args= [typ]}, method_impls, dummy_span)
-    | _ -> failwith "not class, what??"
+    | _ -> ice "not class, what??"
   in
   let instances =
     List.map

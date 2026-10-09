@@ -28,11 +28,11 @@ let anf (p : (tag * typ) program) : typ aprogram =
             (fun arg ->
               match arg with
               | BName (b_name, _, b_typ, _) -> (b_name, b_typ)
-              | _ -> failwith "ANF: unsupported binding" )
+              | _ -> ice "ANF: unsupported binding" )
             args
         in
         AFun (name, new_args, helpA body, call_type, ret_typ, typ)
-    | _ -> failwith "anf: invalid decl"
+    | _ -> ice "anf: invalid decl"
   and helpC (e : (tag * typ) expr) : typ cexpr * typ anf_bind list =
     match e with
     | EGetReference (arg, (tag, typ)) ->
@@ -112,7 +112,7 @@ let anf (p : (tag * typ) program) : typ aprogram =
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, typ, exp_ans)] @ body_setup)
-    | _ -> failwith (sprintf "ANF: unsupported expr %s" (string_of_expr e))
+    | _ -> ice (sprintf "ANF: unsupported expr %s" (string_of_expr e))
   and helpA e : typ aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right

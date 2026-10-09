@@ -16,8 +16,31 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | BName (name, _, _, tag) -> [(name, tag)]
     (* | BTuple (binds, _) -> List.concat (List.map string_list_from_bind binds) *)
     | BBlank _ -> []
+  and loc_typ_of_bind bind =
+    match bind with
+    | BName (_, _, typ, loc) -> (loc, typ)
+    | BBlank loc -> loc, (TyBlank loc)
+  and wf_typ loc typ = 
+    match typ with
+    | TyArrow(args, ret, _) -> (List.concat (List.map (wf_typ loc) args)) @ (wf_typ loc ret)
+    | TyApp(TyCon(Reference), ref_args) -> (
+      match ref_args with
+      | [_; maybe_region] -> (
+          match maybe_region with
+          | TyApp(TyCon(Region), [TyCon(RegionName(_))]) -> []
+          | _ -> 
+            let msg = (sprintf "The second type argument of a Reference expects a region, but was given %s" (string_of_typ maybe_region)) in
+            [MalformedType(typ, loc, msg)]
+        )
+      | _ -> [MalformedType(typ, loc, (sprintf "Reference expects 2 type arguments, but was given %d" (List.length ref_args)))]
+      )
+    (* Eventually, this should check that the correct number of type args are applied to a generic ADT *)
+    | TyApp(ret, args) -> (List.concat (List.map (wf_typ loc) args)) @ (wf_typ loc ret)
+    | _ -> []
   and binding_errs (scope_env, shadow_env, err_lst) x body_err =
     let adding_to_env = string_list_from_bind x in
+    let (loc, typ) = loc_typ_of_bind x in
+    let typ_errs = wf_typ loc typ in
     (* try
       let dups =
         let names = adding_to_env in
@@ -28,7 +51,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           names
       in *)
     (* (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ dups @ body_err) *)
-    (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err)
+    (adding_to_env @ scope_env, adding_to_env @ shadow_env, typ_errs @ err_lst @ body_err)
   (* with Not_found -> (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err) *)
   and blank_typ_in_bind_errs bind =
     match bind with
@@ -128,7 +151,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                method_impls )
         in
         method_impl_errs
-    | _ -> failwith "well-formed instance decl failure: given non instance"
+    | _ -> ice "well-formed instance decl failure: given non instance"
   (* wf for DClass: duplicate method names within the class, duplicate params,
    superclass / bound classes exist (UnknownClass), default bodies are
    well-formed expressions in a scope containing the method args. *)
@@ -182,13 +205,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 if params_len = List.length params then
                   []
                 else
-                  [Arity (params_len, List.length params, loc)]
+                  [SuperclassArity (pred.pred_class, params_len, List.length params, loc)]
               with Not_found -> [UnboundId (pred.pred_class, loc)] )
             superclasses
           |> List.concat
         in
         dup_params_errs @ superclass_errs @ dup_method_errs @ method_body_errs
-    | _ -> failwith "well-formed class decl failure: given non class"
+    | _ -> ice "well-formed class decl failure: given non class"
   and wf_D_list decls env =
     let full_env = get_new_env decls in
     let dup_method_errs, method_scope = get_method_names decls in

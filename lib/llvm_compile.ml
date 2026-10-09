@@ -25,30 +25,30 @@ let rec typ_to_llvm_typ context typ =
     | UInt U32 -> i32_type context
     | UInt U64 -> i64_type context
     | Bool -> i1_type context
-    | _ -> failwith "Typ to llvm typ failure: unsupported tykind" )
+    | _ -> ice "Typ to llvm typ failure: unsupported tykind" )
   | TyApp (TyCon Reference, _) -> pointer_type context
   | TyArrow _ -> pointer_type context
-  | _ -> failwith (sprintf "cannot convert %s to llvm" (string_of_typ typ))
+  | _ -> ice (sprintf "cannot convert %s to llvm" (string_of_typ typ))
 
 and typ_to_llvm_fn_type context typ =
   match typ with
   | TyArrow (args, ret, call_type) ->
       function_type (typ_to_llvm_typ context ret)
         (Array.of_list (List.map (typ_to_llvm_typ context) args))
-  | _ -> failwith "expected a function type"
+  | _ -> ice "expected a function type"
 ;;
 
 let get_tycon_tykind typ =
   match typ with
   | TyCon tykind -> tykind
-  | _ -> failwith "Cannot get tykind of non tycon"
+  | _ -> ice "Cannot get tykind of non tycon"
 ;;
 
 let typ_to_llvm_signed typ =
   match typ with
   | TyCon (Int _) -> true
   | TyCon (UInt _) -> false
-  | _ -> failwith "non int cannot be signed or unsigned Unsupported"
+  | _ -> ice "non int cannot be signed or unsigned Unsupported"
 ;;
 
 let call_type_to_llvm_call_conv ct =
@@ -60,7 +60,7 @@ let call_type_to_llvm_call_conv ct =
 let name_of_immexpr imm =
   match imm with
   | ImmId (name, _) -> name
-  | _ -> failwith (sprintf "cannot get name of non-id %s" (string_of_immexpr imm))
+  | _ -> ice (sprintf "cannot get name of non-id %s" (string_of_immexpr imm))
 ;;
 
 let compile_prog context the_module builder (prog : (tag * typ) aprogram) : string =
@@ -142,7 +142,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
             fn
             (* build_load (typ_to_llvm_typ context typ) fn (gensym "fn_val") builder *)
         | _ -> find env name )
-      | _ -> failwith "cannot reference non-id" )
+      | _ -> ice "cannot reference non-id" )
     | CApp (closure, args, (tag, typ)) ->
         let _, closure_typ = tag_of_immexpr closure in
         let call_type = call_type_of_arrow_typ closure_typ in
@@ -216,7 +216,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
       let fn = build_alloca (pointer_type context) (sprintf "fn_ptr_%d" app_tag) builder in
       let _ = build_store (find env name) fn builder in
       build_load (typ_to_llvm_typ context typ) fn (sprintf "fn_val_%d" app_tag) builder
-    | _ -> failwith "cannot call non-id"
+    | _ -> ice "cannot call non-id"
   ) in *)
     let callee = compile_immexpr env closure in
     let tag, typ = tag_of_immexpr closure in
@@ -263,7 +263,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
     | Less, UInt _, UInt _ -> build_icmp Icmp.Ult
     | LessEq, UInt _, UInt _ -> build_icmp Icmp.Ule
     | _ ->
-        failwith
+        ice
           (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op)
              (string_of_typ ltyp) (string_of_typ rtyp) )
   and prim1_to_llvm_op op typ =
@@ -272,8 +272,8 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
     | Neg, _ -> build_neg
     | Not, _ -> build_not
     | _ ->
-        failwith
-          (sprintf "unsupported prim2 to llvm op %s for typ %s" (string_of_op1 op)
+        ice
+          (sprintf "unsupported prim1 to llvm op %s for typ %s" (string_of_op1 op)
              (string_of_typ typ) )
   in
   match prog with

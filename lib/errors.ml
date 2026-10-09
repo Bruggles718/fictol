@@ -18,7 +18,9 @@ exception DuplicateFun of string * sourcespan * sourcespan (* name, where used, 
 (* value, where used *)
 exception Overflow of uint64 * sourcespan
 
-exception Arity of int * int * sourcespan (* intended arity, actual arity, where called *)
+exception CallArity of int * int * sourcespan (* intended arity, actual arity, where called *)
+
+exception SuperclassArity of string * int * int * sourcespan (* intended arity, actual arity, where called *)
 
 exception NotYetImplemented of string (* TODO: Message to show *)
 
@@ -29,6 +31,8 @@ exception InternalCompilerError of string (* Major failure: message to show *)
 exception NoTypeAnnotation of string * sourcespan
 
 exception UnknownType of typ
+
+exception MalformedType of typ * sourcespan * string
 
 (* name binding, where defined *)
 (* exception LetRecNonFunction of sourcespan bind * sourcespan  *)
@@ -52,7 +56,9 @@ let known_compiletime_exn exn =
    |Unsupported _
    |UnknownType _
    |NoTypeAnnotation _
-   |Arity _ -> true
+   |MalformedType _
+   |SuperclassArity _
+   |CallArity _ -> true
   | _ -> false
 ;;
 
@@ -75,16 +81,20 @@ let print_error exn =
   | Overflow (num, loc) ->
       sprintf "The number literal %s, used at <%s>, is not supported in this language"
         (Uint64.to_string num) (string_of_sourcespan loc)
-  | Arity (expected, actual, loc) ->
+  | CallArity (expected, actual, loc) ->
       sprintf "The function called at <%s> expected an arity of %d, but received %d arguments"
         (string_of_sourcespan loc) expected actual
+  | SuperclassArity (superclass_name, expected, actual, loc) ->
+      sprintf "The class %s extended at <%s> expected an arity of %d, but received %d arguments"
+        superclass_name (string_of_sourcespan loc) expected actual
   | DeclArity (name, num_args, num_types, loc) ->
       sprintf "The function %s, defined at %s, has %d arguments but only %d types provided" name
         (string_of_sourcespan loc) num_args num_types
   | UnknownType (TyPath (path, loc)) ->
-      sprintf "cannot resolve type %s" (ExtString.String.join "::" path)
+      sprintf "Cannot resolve type %s at <%s>" (ExtString.String.join "::" path) (string_of_sourcespan loc)
   | NoTypeAnnotation (x, loc) ->
       sprintf "Type annotation required for %s at <%s>" x (string_of_sourcespan loc)
+  | MalformedType (typ, loc, explanation) -> sprintf "Malformed type %s at <%s>: %s" (string_of_typ typ) (string_of_sourcespan loc) (explanation) 
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 

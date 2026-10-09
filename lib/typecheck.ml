@@ -20,8 +20,8 @@ let rec resolve_typ_path env (typ : typ) =
         if Option.is_some found_opt then
           (Option.get found_opt, [])
         else
-          (typ, [UnknownType typ])
-    | _ -> (typ, [UnknownType typ]) )
+          (typ, [UnknownType (typ)])
+    | _ -> (typ, [UnknownType (typ)]) )
   | TyVar name -> (TyVar name, [])
   | TyCon name -> (TyCon name, [])
   | TyArrow (args, ret_typ, call_type) ->
@@ -215,7 +215,7 @@ let rec subst_var_typ ((tyvar : string), (to_typ : typ)) (in_typ : typ) : typ =
       TyApp
         ( subst_var_typ (tyvar, to_typ) ret_typ,
           List.map (fun arg -> subst_var_typ (tyvar, to_typ) arg) args )
-  | _ -> failwith "should have been resolved by now"
+  | _ -> ice "should have been resolved by now"
 ;;
 
 let rec subst_var_typ_in_scheme
@@ -242,7 +242,7 @@ let rec subst_var_typ_in_scheme
       TyApp
         ( subst_var_typ_in_scheme (tyvar, to_typ) scheme_args ret_typ,
           List.map (fun arg -> subst_var_typ_in_scheme (tyvar, to_typ) scheme_args arg) args )
-  | _ -> failwith "should have been resolved by now"
+  | _ -> ice "should have been resolved by now"
 ;;
 
 let rec subst_var_scheme ((tyvar : string), (to_typ : typ)) (in_scheme : 'a scheme) : 'a scheme =
@@ -294,7 +294,7 @@ let rec ftv_typ (t : typ) : StringSet.t =
   | TyApp (typ, args) ->
       List.fold_right (fun t ftvs -> StringSet.union (ftv_typ t) ftvs) args (ftv_typ typ)
   | TyBlank _ -> StringSet.empty
-  | _ -> failwith "should have been resolved by now"
+  | _ -> ice "should have been resolved by now"
 ;;
 
 let ftv_pred (p : 'a predicate) : StringSet.t =
@@ -426,7 +426,7 @@ let get_bind_typs binds =
     (fun bind ->
       match bind with
       | BName (name, _, typ, tag) -> typ
-      | _ -> failwith "unsupported binding type" )
+      | _ -> ice "unsupported binding type" )
     binds
 ;;
 
@@ -451,7 +451,7 @@ let class_info_of_decl (d : sourcespan decl) : sourcespan class_info =
         class_superclasses= superclasses;
         class_methods= List.map method_info_of_method_sig methods;
         class_span= tag }
-  | _ -> failwith "Cannot get class info of non class def"
+  | _ -> ice "Cannot get class info of non class def"
 ;;
 
 let scheme_of_method (cls : 'a class_info) (m : 'a method_info) : 'a scheme =
@@ -480,12 +480,12 @@ let register_class (d : sourcespan decl) : unit =
     match ms.ms_default with
     | Some ms_default ->
         DFun (ms.ms_name, ms.ms_generics, ms.ms_args, ms_default, FictolFunc, ms.ms_ret, ms.ms_span)
-    | None -> failwith (sprintf "Cannot convert method %s without a body" ms.ms_name)
+    | None -> ice (sprintf "Cannot convert method %s without a body" ms.ms_name)
   in
   match d with
   | DClass (name, params, superclasses, methods, span) ->
       if Hashtbl.mem class_table name then
-        failwith (sprintf "Duplicate class at <%s>" (string_of_sourcespan span))
+        ice (sprintf "Duplicate class at <%s>" (string_of_sourcespan span))
       else
         let cls_info = class_info_of_decl d in
         Hashtbl.add class_table name cls_info;
@@ -498,7 +498,7 @@ let register_class (d : sourcespan decl) : unit =
             | None -> () )
           methods;
         Hashtbl.add instance_table name []
-  | _ -> failwith "Cannot register non class"
+  | _ -> ice "Cannot register non class"
 ;;
 
 let validate_classes () : unit =
@@ -659,12 +659,12 @@ let name_of_impldecl_dfun impl_d =
   | ImplPrim1 op -> (
     match overloaded_prim1 op with
     | Some (_, name) -> name
-    | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op1 op)) )
+    | None -> ice (sprintf "Cannot get decl name of prim1 %s" (string_of_op1 op)) )
   | ImplPrim2 op -> (
     match overloaded_prim2 op with
     | Some (_, name) -> name
-    | None -> failwith (sprintf "Cannot get decl name of prim1 %s" (string_of_op2 op)) )
-  | _ -> failwith "Cannot get name of non DFun"
+    | None -> ice (sprintf "Cannot get decl name of prim1 %s" (string_of_op2 op)) )
+  | _ -> ice "Cannot get name of non DFun"
 ;;
 
 let instance_info_of_decl (d : sourcespan decl) : sourcespan instance_info =
@@ -684,13 +684,13 @@ let instance_info_of_decl (d : sourcespan decl) : sourcespan instance_info =
         instance_id=
           head.pred_class ^ "##" ^ ExtString.String.join "#" (List.map string_of_typ head.pred_args)
       }
-  | _ -> failwith "Cannot get instance info of non instance decl"
+  | _ -> ice "Cannot get instance info of non instance decl"
 ;;
 
 let get_return_typ (typ : typ) =
   match typ with
   | TyArrow (_, ret_typ, call_type) -> ret_typ
-  | _ -> failwith (sprintf "Expected arrow type, got %s" (string_of_typ typ))
+  | _ -> ice (sprintf "Expected arrow type, got %s" (string_of_typ typ))
 ;;
 
 let rec match_typ (pat_vars : StringSet.t) (pat : typ) (target : typ) (acc : typ subst) :
@@ -899,14 +899,14 @@ let scheme_of_decl (d : 'a decl) : 'a scheme =
           (fun arg ->
             match arg with
             | BName (_, _, typ, _) -> typ
-            | _ -> failwith "Scheme of decl failure: Unsupported binding type" )
+            | _ -> ice "Scheme of decl failure: Unsupported binding type" )
           args
       in
       SForall
         ( List.map name_of_generic_bind generics,
           List.concat (List.map predicates_of_generic_bind generics),
           TyArrow (arg_tvs, ret_typ, call_type) )
-  | _ -> failwith "Scheme of decl failure: Cannot get scheme of non DFun"
+  | _ -> ice "Scheme of decl failure: Cannot get scheme of non DFun"
 ;;
 
 (* DFun(name, generics, args, _, _, ret, _) ->
@@ -957,7 +957,7 @@ let string_of_pred_list (pred_list : 'a predicate list) =
 let name_of_bind b =
   match b with
   | BName (x, _, _, _) -> x
-  | _ -> failwith "invalid bind form"
+  | _ -> ice "invalid bind form"
 ;;
 
 let map_types_in_bind f b =
@@ -1134,7 +1134,7 @@ let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 let call_type_of_arrow_typ typ =
   match typ with
   | TyArrow (args, ret, ct) -> ct
-  | _ -> failwith "call_type_of_arrow_typ failure: given non arrow type"
+  | _ -> ice "call_type_of_arrow_typ failure: given non arrow type"
 ;;
 
 let find_method_info cls d =
@@ -1142,7 +1142,7 @@ let find_method_info cls d =
   let result = List.filter (fun method_info -> method_info.m_name = name) cls.class_methods in
   match result with
   | [found_info] -> found_info
-  | _ -> failwith "Find method info failure: no method found"
+  | _ -> ice "Find method info failure: no method found"
 ;;
 
 let method_sig_of_decl d =
@@ -1154,13 +1154,13 @@ let method_sig_of_decl d =
         ms_ret= ret_typ;
         ms_default= Some body;
         ms_span= loc }
-  | _ -> failwith "Method sig of decl failure: cannot convert non DFun to method sig"
+  | _ -> ice "Method sig of decl failure: cannot convert non DFun to method sig"
 ;;
 
 let name_of_dfun d =
   match d with
   | DFun (name, _, _, _, _, _, _) -> name
-  | _ -> failwith "Name of DFun failure: given non DFun"
+  | _ -> ice "Name of DFun failure: given non DFun"
 ;;
 
 type mono_resolution =
@@ -1331,7 +1331,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
     | EPrim1 (op, e, loc) ->
         let make_expr_args args ret_typ =
           match args with
-          | [] -> failwith "what"
+          | [] -> ice "what"
           | first :: _ -> EPrim1 (op, first, (loc, ret_typ))
         in
         let sch =
@@ -1341,7 +1341,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
               SForall ([new_typ], [], TyArrow ([TyVar new_typ], TyVar new_typ, Prim))
           (* | Add1 | Sub1 | Neg -> SForall ([], [], TyArrow ([t_i32], t_i32)) *)
           | Not -> SForall ([], [], TyArrow ([t_bool], t_bool, Prim))
-          | _ -> failwith (sprintf "unsupported prim1 %s" (string_of_op1 op))
+          | _ -> ice (sprintf "unsupported prim1 %s" (string_of_op1 op))
         in
         let sch_cs, sch_inst = instantiate sch in
         infer_app_typ make_expr_args []
@@ -1351,7 +1351,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let make_expr_args args ret_typ =
           match args with
           | first :: second :: _ -> EPrim2 (op, first, second, (loc, ret_typ))
-          | _ -> failwith "what"
+          | _ -> ice "what"
         in
         let sch =
           match op with
@@ -1367,7 +1367,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
             let new_ty = gensym_typ "eqoperand" in
             SForall ([new_ty], [], TyArrow ([TyVar new_ty; TyVar new_ty], t_bool)) *)
           | And | Or -> SForall ([], [], TyArrow ([t_bool; t_bool], t_bool, Prim))
-          | _ -> failwith (sprintf "unsupported prim2 %s" (string_of_op2 op))
+          | _ -> ice (sprintf "unsupported prim2 %s" (string_of_op2 op))
         in
         let sch_cs, sch_inst = instantiate sch in
         infer_app_typ make_expr_args []
@@ -1446,7 +1446,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
         let final_constraints = apply_subst_wanteds body_subst body_wanteds in
         (* EGetReference(new_body_expr, (loc, )) in *)
         (body_subst, final_typ, final_constraints, EGetReference (new_body_expr, (loc, final_typ)))
-    | _ -> failwith (sprintf "cannot type check %s" (string_of_expr e))
+    | _ -> ice (sprintf "cannot type check %s" (string_of_expr e))
   and infer_app_typ
       (make_expr : typed_tag expr list -> typ -> typed_tag expr)
       (sch_subst : typ subst)
@@ -1537,8 +1537,8 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
               call_type,
               ret_typ,
               (loc, TyArrow (arg_typs, ret_typ, call_type)) )
-      | _ -> failwith "Check decl failure: scheme type was not TyArrow" )
-    | _ -> failwith "Check decl failure: cannot check non DFun"
+      | _ -> ice "Check decl failure: scheme type was not TyArrow" )
+    | _ -> ice "Check decl failure: cannot check non DFun"
   in
   (* REPLACES infer_decl. Generalised so the scheme is a PARAMETER instead of
    being looked up by name; then one routine checks ordinary functions
@@ -1596,8 +1596,8 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
                 map_tags_pred instance_head,
                 snd (List.split elaborated_impls),
                 blank_tag loc )
-        | None -> failwith "Check instance failure: no instance found??" )
-    | _ -> failwith "Check instance failure: cannot check non DInstance"
+        | None -> ice "Check instance failure: no instance found??" )
+    | _ -> ice "Check instance failure: cannot check non DInstance"
   in
   (* d is a DInstance. Run after ALL classes and instances are registered.
    1. Look up the instance_info and the class.
@@ -1636,7 +1636,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
             method_sigs
         in
         DClass (name, params, List.map map_tags_pred superclasses, typed_sigs, blank_tag loc)
-    | _ -> failwith "Check class defaults: given non DClass"
+    | _ -> ice "Check class defaults: given non DClass"
   in
   (* d is a DClass. For each method with a default body, check_decl env
    (scheme_of_method cls m) default_fun, replace the entry in
