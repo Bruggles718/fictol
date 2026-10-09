@@ -142,7 +142,7 @@ let partition_decls (ds : 'a decl list) : 'a decl list * 'a decl list * 'a decl 
       match d with
       | DClass _ -> (d :: cs, is, fs)
       | DInstance _ -> (cs, d :: is, fs)
-      | DFun _ -> (cs, is, d :: fs) )
+      | DFun _ | DExtern _ -> (cs, is, d :: fs) )
     ds ([], [], [])
 ;;
 

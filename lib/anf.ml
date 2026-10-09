@@ -22,6 +22,16 @@ let anf (p : (tag * typ) program) : typ aprogram =
     | Program (decls, (tag, typ)) -> AProgram (List.map helpD decls, typ)
   and helpD d =
     match d with
+    | DExtern (name, args, call_type, ret_typ, (tag, typ)) ->
+        let new_args =
+          List.map
+            (fun arg ->
+              match arg with
+              | BName (b_name, _, b_typ, _) -> (b_name, b_typ)
+              | _ -> ice "ANF: unsupported binding" )
+            args
+        in
+        AExtern (name, new_args, call_type, ret_typ, typ)
     | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
         let new_args =
           List.map
@@ -154,6 +164,8 @@ and map_tags_aexpr (f : 'a -> 'b) (a : 'a aexpr) : 'b aexpr =
 
 let map_tags_adecl (f : 'a -> 'b) (d : 'a adecl) : 'b adecl =
   match d with
+  | AExtern (name, args, call_type, ret_typ, tag) ->
+      AExtern (name, List.map (map_tags_abind f) args, call_type, ret_typ, f tag)
   | AFun (name, args, body, call_type, ret_typ, tag) ->
       AFun (name, List.map (map_tags_abind f) args, map_tags_aexpr f body, call_type, ret_typ, f tag)
 ;;
@@ -186,6 +198,7 @@ let tag_of_aexpr (a : 'a aexpr) : 'a =
 
 let tag_of_adecl (d : 'a adecl) : 'a =
   match d with
+  | AExtern (_, _, _, _, tag)
   | AFun (_, _, _, _, _, tag) -> tag
 ;;
 

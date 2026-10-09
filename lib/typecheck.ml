@@ -102,6 +102,13 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
   and helpD_in outer decl =
     (* `outer` = type variables already in scope (instance generics for methods) *)
     match decl with
+    | DExtern(name, args, call_type, typ, span) -> 
+      let new_args, args_errs =
+        List.split (List.map (fun arg -> helpBind outer arg) args)
+      in
+      let ret_typ, ret_errs = resolve_typ_path outer typ in
+      ( DExtern (name, new_args, call_type, ret_typ, span),
+          List.concat args_errs @ ret_errs )
     | DFun (name, generics, args, body, call_type, typ, span) ->
         let generic_env = outer @ env_of_generics generics in
         let new_args, args_errs =
@@ -893,6 +900,19 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
 
 let scheme_of_decl (d : 'a decl) : 'a scheme =
   match d with
+  | DExtern(name, args, call_type, ret_typ, _) ->
+    let arg_tvs =
+        List.map
+          (fun arg ->
+            match arg with
+            | BName (_, _, typ, _) -> typ
+            | _ -> ice "Scheme of decl failure: Unsupported binding type" )
+          args
+      in
+      SForall
+        ( [],
+          [],
+          TyArrow (arg_tvs, ret_typ, call_type) )
   | DFun (name, generics, args, _, call_type, ret_typ, _) ->
       let arg_tvs =
         List.map
@@ -1073,6 +1093,8 @@ let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
 
 let rec map_tags_decl (f : 'a -> 'b) (d : 'a decl) : 'b decl =
   match d with
+  | DExtern (name, args, call_type, ret_typ, tag) ->
+      DExtern (name, List.map (map_tags_bind f) args, call_type, ret_typ, f tag)
   | DFun (name, generics, args, body, call_type, ret_typ, tag) ->
       DFun
         ( name,
@@ -1159,6 +1181,7 @@ let method_sig_of_decl d =
 
 let name_of_dfun d =
   match d with
+  | DExtern (name, _, _, _, _)
   | DFun (name, _, _, _, _, _, _) -> name
   | _ -> ice "Name of DFun failure: given non DFun"
 ;;
@@ -1503,6 +1526,8 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
       typed_tag decl =
     let skolem_subst, givens, fun_typ = skolemize scheme in
     match d with
+    | DExtern (name, args, call_type, ret_typ, loc) ->
+      DExtern (name, List.map lift_bind args, call_type, ret_typ, (loc, TyArrow(get_bind_typs args, ret_typ, call_type)))
     | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) -> (
       match fun_typ with
       | TyArrow (fun_args, fun_ret_typ, ct) ->

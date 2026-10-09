@@ -194,6 +194,7 @@ or_chain :
   | or_chain OR binop_operand { EPrim2(Or, $1, $3, full_span())}
 
 decl :
+  | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ret_typ_opt { DExtern($3, $6, $1, $8, full_span()) }
   | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ret_typ_opt COLON expr { DFun($3, $4, $6, $10, $1, $8, full_span()) }
   | TYPECLASS ID LESSNOSPACE ids GREATER extends_opt COLON method_sigs {
     DClass($2, $4, $6, $8, full_span())

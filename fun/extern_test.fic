@@ -1,0 +1,13 @@
+extern "C" def putchar(c: char) -> char
+extern "C" def puts(s: ref<char, Static>) -> i32
+
+extern "C" def main() -> i32:
+    let a = 'a' in
+    let b = 'b' in
+    let c = 'c' in
+    putchar(a);
+    putchar(b);
+    putchar(c);
+    putchar('\n');
+    let my_str: ref<char, Static> = "this is a cool string literal!" in
+    puts(my_str)

@@ -75,6 +75,7 @@ and 'a method_sig =
     ms_span: 'a }
 
 type 'a decl =
+  | DExtern of string * 'a bind list * call_type * typ * 'a
   | DFun of string * 'a generic_bind list * 'a bind list * 'a expr * call_type * typ * 'a
   | DClass of string * string list * 'a predicate list * 'a method_sig list * 'a
   | DInstance of 'a generic_bind list * 'a predicate * 'a method_impl list * 'a
@@ -115,6 +116,8 @@ and 'a aexpr =
   (* | ALetRec of (string * 'a cexpr) list * 'a aexpr * 'a *)
   | ACExpr of 'a cexpr
 
-and 'a adecl = AFun of string * 'a abind list * 'a aexpr * call_type * typ * 'a
+and 'a adecl = 
+  | AFun of string * 'a abind list * 'a aexpr * call_type * typ * 'a
+  | AExtern of string * 'a abind list * call_type * typ * 'a
 
 and 'a aprogram = AProgram of 'a adecl list * 'a

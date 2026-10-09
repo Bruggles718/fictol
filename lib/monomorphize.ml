@@ -196,6 +196,8 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         List.filter_map
           (fun d ->
             match d with
+            | DExtern (name, args, call_type, ret_typ, loc) ->
+              Some (d)
             | DFun (name, [], args, body, call_type, ret_typ, loc) ->
                 let new_body = monomorphize_expr body in
                 Some (DFun (name, [], args, new_body, call_type, ret_typ, loc))

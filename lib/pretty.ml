@@ -252,6 +252,8 @@ let rec string_of_impl_decl_with depth print_a impl_d =
 
 and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
+  | DExtern (name, args, call_type, typ, a) ->
+    string_of_func_sig_with depth print_a name [] args None call_type typ a
   | DFun (name, generics, args, body, call_type, typ, a) ->
       string_of_func_sig_with depth print_a name generics args (Some body) call_type typ a
   | DClass (name, params, superclasses, method_sigs, a) ->
@@ -315,6 +317,16 @@ let rec string_of_aexpr_with (depth : int) (print_a : 'a -> string) (e : 'a aexp
 
 and string_of_adecl_with depth print_a decl =
   match decl with
+  | AExtern (name, args, call_type, ret_typ, a) ->
+    let binds = List.map (fun (b_name, b_a) -> sprintf "%s%s" b_name (print_a b_a)) args in
+      sprintf "(def %s(%s)%s)%s" name
+        (ExtString.String.join ", " binds)
+        (let typ_str = string_of_typ ret_typ in
+         if String.length typ_str <= 0 then
+           ""
+         else
+           " -> " ^ typ_str )
+        (print_a a)
   | AFun (name, args, body, call_type, ret_typ, a) ->
       let binds = List.map (fun (b_name, b_a) -> sprintf "%s%s" b_name (print_a b_a)) args in
       sprintf "(def %s(%s)%s:\n  %s)%s" name

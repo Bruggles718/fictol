@@ -73,6 +73,9 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
   in
   let rec compile_afun env (f : 'a adecl) : unit =
     match f with
+    | AExtern (name, binds, call_type, ret_typ, (tag, typ)) ->
+        let llvm_fun = find env name in
+        Llvm.set_linkage Llvm.Linkage.External llvm_fun
     | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
         let llvm_fun = find env name in
         (* let args_env = List.combine (List.map fst binds) (Array.to_list (params llvm_fun)) in *)
@@ -97,7 +100,8 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         Llvm_analysis.assert_valid_function llvm_fun
   and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
     match f with
-    | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
+    | AExtern (name, binds, call_type, ret_typ, (tag, typ))
+    | AFun (name, binds, _, call_type, ret_typ, (tag, typ)) ->
         let llvm_args =
           Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ context b_typ) binds)
         in
