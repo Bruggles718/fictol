@@ -24,4 +24,8 @@ def print_i32_helper(n: i32) -> i32:
         print_i32_helper(rem)
 
 extern "C" def main() -> i32:
-    print_i32(1234)
+    let x = 1234 in
+    print_i32(x);
+    borrow x as x_ref for Reg in
+        let x_val = *(x_ref) in
+        print_i32(x_val)

@@ -135,7 +135,8 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         (prim2_to_llvm_op op ltyp rtyp) l r (sprintf "cprim2_%d" tag) builder
     | CPrim1 (op, body, (tag, typ)) ->
         let b = compile_immexpr env body in
-        (prim1_to_llvm_op op typ) b (sprintf "cprim1_%d" tag) builder
+        let _, b_typ = tag_of_immexpr body in
+        (prim1_to_llvm_op op b_typ) b (sprintf "cprim1_%d" tag) builder
     | CGetReference (body, (tag, typ)) -> (
       match body with
       | ImmId (name, (tag, typ)) -> (
@@ -273,10 +274,11 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
           (sprintf "unsupported prim2 to llvm op %s for typs %s %s" (string_of_op2 op)
              (string_of_typ ltyp) (string_of_typ rtyp) )
   and prim1_to_llvm_op op typ =
-    let tykind = get_tycon_tykind typ in
-    match (op, tykind) with
+    (* let tykind = get_tycon_tykind typ in *)
+    match (op, typ) with
     | Neg, _ -> build_neg
     | Not, _ -> build_not
+    | Deref, (TyApp(TyCon(Reference), [ref_typ; _])) -> build_load (typ_to_llvm_typ context ref_typ)
     | _ ->
         ice
           (sprintf "unsupported prim1 to llvm op %s for typ %s" (string_of_op1 op)

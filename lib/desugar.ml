@@ -76,7 +76,7 @@ let desugar (p : sourcespan program) : sourcespan program =
           let _, m = Option.get (overloaded_prim1 op) in
           EApp (EId (m, tag), [helpE body], tag)
       | Not -> EIf (helpE body, ELiteral (LitBool false, tag), ELiteral (LitBool true, tag), tag)
-      | Add1 | Sub1 | Print | PrintStack | Neg -> EPrim1 (op, helpE body, tag) )
+      | Add1 | Sub1 | Print | PrintStack | Neg | Deref -> EPrim1 (op, helpE body, tag) )
     | EPrim2 (op, left, right, tag) -> (
       match op with
       | _ when !desugar_overloaded_ops && Option.is_some (overloaded_prim2 op) ->

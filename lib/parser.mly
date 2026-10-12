@@ -57,6 +57,7 @@ prim1 :
   | NOT { Not }
   | PRINT { Print }
   | PRINTSTACK { PrintStack }
+  | TIMES { Deref }
 
 bindings :
   | bind EQUAL expr { [($1, $3, full_span())] }

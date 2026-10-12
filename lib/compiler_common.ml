@@ -157,6 +157,7 @@ let overloaded_prim1 (op : prim1) : (string * string) option =
   (* Neg |-> Some ("Neg", "neg"); everything else None. *)
   match op with
   | Neg -> Some ("Neg", "neg")
+  | Deref -> Some("Deref", "deref")
   | _ -> None
 ;;
 
@@ -228,6 +229,17 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" bool_type] in
+  let deref_class = make_class "Deref" params_self [] [
+    {
+      ms_name = "deref";
+      ms_generics = [(GBName("R", [], dummy_span))];
+      (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
+      ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; TyVar("R")]))];
+      ms_ret = self;
+      ms_default = None;
+      ms_span = dummy_span
+    }
+  ] in
   let ord_class =
     make_class "Ord" params_self
       [make_superclass "Eq" [self]]
@@ -236,7 +248,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
         make_prim2_method "lt" bool_type;
         make_prim2_method "le" bool_type ]
   in
-  let built_in_classes = math_classes @ [eq_class; ord_class; neg_class] in
+  let built_in_classes = math_classes @ [eq_class; ord_class; neg_class; deref_class] in
   let name_to_prim2_op name =
     match name with
     | "add" -> Plus
@@ -253,6 +265,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let name_to_prim1_op name =
     match name with
     | "neg" -> Neg
+    | "deref" -> Deref
     | _ -> ice "not prim1, what??"
   in
   let inst_prim_for_typ cls typ =
@@ -279,6 +292,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
     |> List.concat
   in
   let eq_bool_instance = inst_prim_for_typ eq_class bool_type in
+  let deref_bool_instance = inst_prim_for_typ deref_class bool_type in
   match p with
-  | Program (decls, loc) -> Program (built_in_classes @ instances @ [eq_bool_instance] @ decls, loc)
+  | Program (decls, loc) -> Program (built_in_classes @ instances @ [eq_bool_instance; deref_bool_instance] @ decls, loc)
 ;;

@@ -29,6 +29,7 @@ let string_of_op1 op =
   | PrintStack -> "printStack"
   | Not -> "!"
   | Neg -> "-"
+  | Deref -> "*"
 ;;
 
 let name_of_op1 op =
@@ -39,6 +40,7 @@ let name_of_op1 op =
   | PrintStack -> "PrintStack"
   | Not -> "Not"
   | Neg -> "Neg"
+  | Deref -> "Deref"
 ;;
 
 let string_of_op2 op =
