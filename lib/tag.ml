@@ -26,10 +26,9 @@ let rename (p : (tag * typ) program) : (tag * typ) program =
     | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
   and helpD env decl =
     match decl with
-    | DExtern _ -> decl
     | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
         let newArgs, env' = helpBS env args in
-        DFun (name, [], newArgs, helpE env' body, call_type, ret_typ, (tag, typ))
+        DFun (name, [], newArgs, Option.map (helpE env') body, call_type, ret_typ, (tag, typ))
     | _ -> ice "Rename: Found non DFun after monomorphization?? Is that allowed?? Idk"
   and helpB env b =
     match b with

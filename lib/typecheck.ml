@@ -101,10 +101,6 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
   and helpD_in outer decl =
     (* `outer` = type variables already in scope (instance generics for methods) *)
     match decl with
-    | DExtern (name, args, call_type, typ, span) ->
-        let new_args, args_errs = List.split (List.map (fun arg -> helpBind outer arg) args) in
-        let ret_typ, ret_errs = resolve_typ_path outer typ in
-        (DExtern (name, new_args, call_type, ret_typ, span), List.concat args_errs @ ret_errs)
     | DFun (name, generics, args, body, call_type, typ, span) ->
         let generic_env = outer @ env_of_generics generics in
         let new_args, args_errs =
@@ -112,7 +108,12 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         in
         let gens, gen_errs = List.split (List.map (helpGeneric generic_env) generics) in
         let ret_typ, ret_errs = resolve_typ_path generic_env typ in
-        let new_body, body_errs = helpE generic_env body in
+        let new_body, body_errs = 
+          if Option.is_some body then
+            let nb, errs = helpE generic_env (Option.get body) in
+            (Some(nb), errs)
+          else
+            (None, []) in
         ( DFun (name, gens, new_args, new_body, call_type, ret_typ, span),
           List.concat gen_errs @ List.concat args_errs @ ret_errs @ body_errs )
     | DClass (name, params, supers, sigs, span) ->
@@ -480,10 +481,7 @@ let register_class (d : sourcespan decl) : unit =
    (class, method). Does NOT validate anything that refers to other classes,
    because a superclass may be declared later in the file. *)
   let method_sig_to_dfun ms =
-    match ms.ms_default with
-    | Some ms_default ->
-        DFun (ms.ms_name, ms.ms_generics, ms.ms_args, ms_default, FictolFunc, ms.ms_ret, ms.ms_span)
-    | None -> ice (sprintf "Cannot convert method %s without a body" ms.ms_name)
+    DFun (ms.ms_name, ms.ms_generics, ms.ms_args, ms.ms_default, FictolFunc, ms.ms_ret, ms.ms_span)
   in
   match d with
   | DClass (name, params, superclasses, methods, span) ->
@@ -896,16 +894,6 @@ let check_superclass_obligations (inst : sourcespan instance_info) : unit =
 
 let scheme_of_decl (d : 'a decl) : 'a scheme =
   match d with
-  | DExtern (name, args, call_type, ret_typ, _) ->
-      let arg_tvs =
-        List.map
-          (fun arg ->
-            match arg with
-            | BName (_, _, typ, _) -> typ
-            | _ -> ice "Scheme of decl failure: Unsupported binding type" )
-          args
-      in
-      SForall ([], [], TyArrow (arg_tvs, ret_typ, call_type))
   | DFun (name, generics, args, _, call_type, ret_typ, _) ->
       let arg_tvs =
         List.map
@@ -1086,14 +1074,12 @@ let map_tags_method_sig (f : 'a -> 'b) (ms : 'a method_sig) : 'b method_sig =
 
 let rec map_tags_decl (f : 'a -> 'b) (d : 'a decl) : 'b decl =
   match d with
-  | DExtern (name, args, call_type, ret_typ, tag) ->
-      DExtern (name, List.map (map_tags_bind f) args, call_type, ret_typ, f tag)
   | DFun (name, generics, args, body, call_type, ret_typ, tag) ->
       DFun
         ( name,
           List.map (map_tags_generic f) generics,
           List.map (map_tags_bind f) args,
-          map_tags_expr f body,
+          Option.map (map_tags_expr f) body,
           call_type,
           ret_typ,
           f tag )
@@ -1167,14 +1153,14 @@ let method_sig_of_decl d =
         ms_generics= generic_binds;
         ms_args= args;
         ms_ret= ret_typ;
-        ms_default= Some body;
+        ms_default= body;
         ms_span= loc }
   | _ -> ice "Method sig of decl failure: cannot convert non DFun to method sig"
 ;;
 
 let name_of_dfun d =
   match d with
-  | DExtern (name, _, _, _, _) | DFun (name, _, _, _, _, _, _) -> name
+  | DFun (name, _, _, _, _, _, _) -> name
   | _ -> ice "Name of DFun failure: given non DFun"
 ;;
 
@@ -1518,17 +1504,10 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
       typed_tag decl =
     let skolem_subst, givens, fun_typ = skolemize scheme in
     match d with
-    | DExtern (name, args, call_type, ret_typ, loc) ->
-        DExtern
-          ( name,
-            List.map lift_bind args,
-            call_type,
-            ret_typ,
-            (loc, TyArrow (get_bind_typs args, ret_typ, call_type)) )
     | DFun (name, generic_binds, args, body, call_type, ret_typ, loc) -> (
       match fun_typ with
       | TyArrow (fun_args, fun_ret_typ, ct) ->
-          let new_body = apply_subst_expr skolem_subst body in
+          let new_body = Option.map (apply_subst_expr skolem_subst) body in
           let arg_typs = get_bind_typs args in
           let stated_typ = TyArrow (arg_typs, ret_typ, call_type) in
           let _ = unify stated_typ fun_typ loc in
@@ -1538,7 +1517,11 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
               env args fun_args
           in
           let body_subst, new_body_typ, body_wanteds, new_new_body =
-            infer_exp_elab body_env new_body
+            if Option.is_some new_body then
+              let body_subst, new_body_typ, body_wanteds, new_new_body = infer_exp_elab body_env (Option.get new_body) in
+              body_subst, new_body_typ, body_wanteds, Some(new_new_body)
+            else
+              [], ret_typ, [], None
           in
           let inferred_ret_typ = apply_subst_typ body_subst fun_ret_typ in
           let unified_subst = unify new_body_typ inferred_ret_typ loc in
@@ -1551,7 +1534,7 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
           (* zonk: the final substitution, then skolems back to the generics' TyVars, in
            every tag type, binder annotation and ETyApp argument *)
           let zonk t = unskolemize_typ (apply_subst_typ final_subst t) in
-          let typed_body = map_typed_types zonk new_new_body in
+          let typed_body = Option.map (map_typed_types zonk) new_new_body in
           DFun
             ( name,
               List.map lift_generic generic_binds,

@@ -54,9 +54,8 @@ let desugar (p : sourcespan program) : sourcespan program =
     | ImplPrim1 _ | ImplPrim2 _ -> impl_d
   and helpD d =
     match d with
-    | DExtern (name, args, call_type, typ, tag) -> d
     | DFun (name, generics, args, body, call_type, typ, tag) ->
-        DFun (name, generics, args, helpE body, call_type, typ, tag)
+        DFun (name, generics, args, Option.map helpE body, call_type, typ, tag)
     | DClass (name, params, supers, sigs, tag) ->
         DClass
           ( name,

@@ -96,7 +96,7 @@ let specialize_decl (d : typed_tag decl) (s : typ subst) (new_name : string) : t
         ( new_name,
           [],
           List.map (map_typed_bind_types sub) args,
-          map_typed_types sub body,
+          Option.map (map_typed_types sub) body,
           call_type,
           sub ret_typ,
           (loc, sub fun_typ) )
@@ -195,9 +195,8 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         List.filter_map
           (fun d ->
             match d with
-            | DExtern (name, args, call_type, ret_typ, loc) -> Some d
             | DFun (name, [], args, body, call_type, ret_typ, loc) ->
-                let new_body = monomorphize_expr body in
+                let new_body = Option.map monomorphize_expr body in
                 Some (DFun (name, [], args, new_body, call_type, ret_typ, loc))
             | DFun (_, _generic_binds, _, _, _, _, _) -> None
             | _ -> None )
@@ -209,7 +208,7 @@ let monomorphize (p : typed_tag program) : typed_tag program =
         let specialised = specialize_decl request.template request.subst request.new_name in
         match specialised with
         | DFun (name, generics, args, body, call_type, ret_typ, loc) ->
-            let new_body = monomorphize_expr body in
+            let new_body = Option.map monomorphize_expr body in
             st.emitted <-
               DFun (name, generics, args, new_body, call_type, ret_typ, loc) :: st.emitted
         | _ -> ice "Monomorphize failure: specialization was not a DFun"

@@ -127,9 +127,10 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           | TyBlank _ -> [NoTypeAnnotation (fun_name ^ " return type", fun_loc)]
           | _ -> []
         in
-        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @ wf_E body env2 in
+        let body_errs = if Option.is_some body then wf_E (Option.get body) env2 else [] in
+        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @  body_errs in
         err_lst
-    | DClass _ | DInstance _ | DExtern _ -> []
+    | DClass _ | DInstance _ -> []
   (* wf for DInstance: the class exists with the right arity, the methods are
    well-formed DFuns (reuse wf_D), and the instance generics are distinct. *)
   and wf_instance_decl (d : sourcespan decl) env : exn list =
@@ -188,19 +189,16 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           List.concat
             (List.map
                (fun ms ->
-                 match ms.ms_default with
-                 | Some body ->
-                     wf_D
+                 wf_D
                        (DFun
                           ( ms.ms_name,
                             ms.ms_generics,
                             ms.ms_args,
-                            body,
+                            ms.ms_default,
                             FictolFunc,
                             ms.ms_ret,
                             ms.ms_span ) )
-                       env
-                 | None -> [] )
+                       env )
                method_sigs )
         in
         let superclass_errs =
@@ -229,19 +227,6 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         (List.mapi
            (fun i d ->
              match d with
-             | DExtern (name, args, ct, typ, loc) ->
-                 let ct_errs =
-                   match ct with
-                   | Extern _ -> []
-                   | _ -> [Unsupported ("Function declared must be extern", loc)]
-                 in
-                 let arg_errs = List.concat (List.map fun_args_errs args) in
-                 let ret_typ_err =
-                   match typ with
-                   | TyBlank _ -> [NoTypeAnnotation (name ^ " return type", loc)]
-                   | _ -> []
-                 in
-                 ct_errs @ arg_errs @ ret_typ_err
              | DFun (name, generics, _, _, ct, typ, loc) -> (
                  (* every function name except this decl's own *)
                  let others = List.filteri (fun j _ -> j <> i) decls in
@@ -257,7 +242,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
            decls )
   and get_new_env decls =
     match decls with
-    | DExtern (name, _, ct, typ, loc) :: rest | DFun (name, _, _, _, ct, typ, loc) :: rest ->
+    | DFun (name, _, _, _, ct, typ, loc) :: rest ->
         (name, loc) :: get_new_env rest
     | _ :: rest -> get_new_env rest
     | [] -> []
