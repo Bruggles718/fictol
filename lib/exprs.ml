@@ -115,7 +115,6 @@ and 'a aexpr =
   (* | ALetRec of (string * 'a cexpr) list * 'a aexpr * 'a *)
   | ACExpr of 'a cexpr
 
-and 'a adecl =
-  | AFun of string * 'a abind list * 'a aexpr option * call_type * typ * 'a
+and 'a adecl = AFun of string * 'a abind list * 'a aexpr option * call_type * typ * 'a
 
 and 'a aprogram = AProgram of 'a adecl list * 'a

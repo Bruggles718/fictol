@@ -324,7 +324,10 @@ and string_of_adecl_with depth print_a decl =
            ""
          else
            " -> " ^ typ_str )
-        (if Option.is_some body then (string_of_aexpr_with (depth - 1) print_a (Option.get body)) else ";")
+        ( if Option.is_some body then
+            string_of_aexpr_with (depth - 1) print_a (Option.get body)
+          else
+            ";" )
         (print_a a)
 
 and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) : string =

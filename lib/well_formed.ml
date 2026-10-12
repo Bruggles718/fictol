@@ -127,8 +127,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           | TyBlank _ -> [NoTypeAnnotation (fun_name ^ " return type", fun_loc)]
           | _ -> []
         in
-        let body_errs = if Option.is_some body then wf_E (Option.get body) env2 else [] in
-        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @  body_errs in
+        let body_errs =
+          if Option.is_some body then
+            wf_E (Option.get body) env2
+          else
+            []
+        in
+        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @ body_errs in
         err_lst
     | DClass _ | DInstance _ -> []
   (* wf for DInstance: the class exists with the right arity, the methods are
@@ -190,15 +195,15 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             (List.map
                (fun ms ->
                  wf_D
-                       (DFun
-                          ( ms.ms_name,
-                            ms.ms_generics,
-                            ms.ms_args,
-                            ms.ms_default,
-                            FictolFunc,
-                            ms.ms_ret,
-                            ms.ms_span ) )
-                       env )
+                   (DFun
+                      ( ms.ms_name,
+                        ms.ms_generics,
+                        ms.ms_args,
+                        ms.ms_default,
+                        FictolFunc,
+                        ms.ms_ret,
+                        ms.ms_span ) )
+                   env )
                method_sigs )
         in
         let superclass_errs =
@@ -242,8 +247,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
            decls )
   and get_new_env decls =
     match decls with
-    | DFun (name, _, _, _, ct, typ, loc) :: rest ->
-        (name, loc) :: get_new_env rest
+    | DFun (name, _, _, _, ct, typ, loc) :: rest -> (name, loc) :: get_new_env rest
     | _ :: rest -> get_new_env rest
     | [] -> []
   and get_dup_class_errs decls =

@@ -155,7 +155,13 @@ and map_tags_aexpr (f : 'a -> 'b) (a : 'a aexpr) : 'b aexpr =
 let map_tags_adecl (f : 'a -> 'b) (d : 'a adecl) : 'b adecl =
   match d with
   | AFun (name, args, body, call_type, ret_typ, tag) ->
-      AFun (name, List.map (map_tags_abind f) args, Option.map (map_tags_aexpr f) body, call_type, ret_typ, f tag)
+      AFun
+        ( name,
+          List.map (map_tags_abind f) args,
+          Option.map (map_tags_aexpr f) body,
+          call_type,
+          ret_typ,
+          f tag )
 ;;
 
 let map_tags_aprogram (f : 'a -> 'b) (p : 'a aprogram) : 'b aprogram =

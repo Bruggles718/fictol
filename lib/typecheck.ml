@@ -108,12 +108,13 @@ let resolve_prog_typ_paths (p : sourcespan program) : sourcespan program fallibl
         in
         let gens, gen_errs = List.split (List.map (helpGeneric generic_env) generics) in
         let ret_typ, ret_errs = resolve_typ_path generic_env typ in
-        let new_body, body_errs = 
+        let new_body, body_errs =
           if Option.is_some body then
             let nb, errs = helpE generic_env (Option.get body) in
-            (Some(nb), errs)
+            (Some nb, errs)
           else
-            (None, []) in
+            (None, [])
+        in
         ( DFun (name, gens, new_args, new_body, call_type, ret_typ, span),
           List.concat gen_errs @ List.concat args_errs @ ret_errs @ body_errs )
     | DClass (name, params, supers, sigs, span) ->
@@ -1518,10 +1519,12 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
           in
           let body_subst, new_body_typ, body_wanteds, new_new_body =
             if Option.is_some new_body then
-              let body_subst, new_body_typ, body_wanteds, new_new_body = infer_exp_elab body_env (Option.get new_body) in
-              body_subst, new_body_typ, body_wanteds, Some(new_new_body)
+              let body_subst, new_body_typ, body_wanteds, new_new_body =
+                infer_exp_elab body_env (Option.get new_body)
+              in
+              (body_subst, new_body_typ, body_wanteds, Some new_new_body)
             else
-              [], ret_typ, [], None
+              ([], ret_typ, [], None)
           in
           let inferred_ret_typ = apply_subst_typ body_subst fun_ret_typ in
           let unified_subst = unify new_body_typ inferred_ret_typ loc in

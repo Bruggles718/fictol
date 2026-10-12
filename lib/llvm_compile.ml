@@ -73,35 +73,34 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
   in
   let rec compile_afun env (f : 'a adecl) : unit =
     match f with
-    | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) ->
-        let llvm_fun = find env name in (
+    | AFun (name, binds, body, call_type, ret_typ, (tag, typ)) -> (
+        let llvm_fun = find env name in
         match body with
-        | Some(body) -> 
-        (* let args_env = List.combine (List.map fst binds) (Array.to_list (params llvm_fun)) in *)
-        let bb = append_block context "entry" llvm_fun in
-        position_at_end bb builder;
-        let args_env =
-          List.map2
-            (fun (name, (_, typ)) arg ->
-              let slot = build_alloca (typ_to_llvm_typ context typ) name builder in
-              ignore (build_store arg slot builder);
-              (name, slot) )
-            binds
-            (Array.to_list (params llvm_fun))
-        in
-        (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
-        ( match call_type with
-        | Extern _ ->
-            let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
-            let _ = build_ret compiled_body builder in
-            ()
-        | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun );
-        Llvm_analysis.assert_valid_function llvm_fun
-      | None -> Llvm.set_linkage Llvm.Linkage.External llvm_fun
-    )
+        | Some body ->
+            (* let args_env = List.combine (List.map fst binds) (Array.to_list (params llvm_fun)) in *)
+            let bb = append_block context "entry" llvm_fun in
+            position_at_end bb builder;
+            let args_env =
+              List.map2
+                (fun (name, (_, typ)) arg ->
+                  let slot = build_alloca (typ_to_llvm_typ context typ) name builder in
+                  ignore (build_store arg slot builder);
+                  (name, slot) )
+                binds
+                (Array.to_list (params llvm_fun))
+            in
+            (* the tail-mode compile emits a ret on every path, so there is no build_ret here *)
+            ( match call_type with
+            | Extern _ ->
+                let compiled_body = compile_aexpr (args_env @ env) body llvm_fun in
+                let _ = build_ret compiled_body builder in
+                ()
+            | _ -> compile_aexpr_tail (args_env @ env) body llvm_fun );
+            Llvm_analysis.assert_valid_function llvm_fun
+        | None -> Llvm.set_linkage Llvm.Linkage.External llvm_fun )
   and forward_declare_func the_module context (f : 'a adecl) : string * llvalue =
     match f with
-     |AFun (name, binds, _, call_type, ret_typ, (tag, typ)) ->
+    | AFun (name, binds, _, call_type, ret_typ, (tag, typ)) ->
         let llvm_args =
           Array.of_list (List.map (fun (_, (_, b_typ)) -> typ_to_llvm_typ context b_typ) binds)
         in
