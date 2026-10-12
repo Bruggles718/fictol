@@ -192,7 +192,6 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let uwidths = [U8; U16; U32; U64] in
   let int_types = List.map (fun w -> TyCon (Int w)) widths in
   let int_types = int_types @ List.map (fun w -> TyCon (UInt w)) uwidths in
-  let bool_type = TyCon Bool in
   let self = TyVar "Self" in
   let params_self = ["Self"] in
   let make_arg name typ = BName (name, false, typ, dummy_span) in
@@ -228,7 +227,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
           | None -> ice "seriously what??" ) )
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
-  let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" bool_type] in
+  let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" t_bool] in
   let deref_class = make_class "Deref" params_self [] [
     {
       ms_name = "deref";
@@ -243,10 +242,10 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let ord_class =
     make_class "Ord" params_self
       [make_superclass "Eq" [self]]
-      [ make_prim2_method "gt" bool_type;
-        make_prim2_method "ge" bool_type;
-        make_prim2_method "lt" bool_type;
-        make_prim2_method "le" bool_type ]
+      [ make_prim2_method "gt" t_bool;
+        make_prim2_method "ge" t_bool;
+        make_prim2_method "lt" t_bool;
+        make_prim2_method "le" t_bool ]
   in
   let built_in_classes = math_classes @ [eq_class; ord_class; neg_class; deref_class] in
   let name_to_prim2_op name =
@@ -291,8 +290,14 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       (List.map (fun cls -> (cls, int_types)) built_in_classes)
     |> List.concat
   in
-  let eq_bool_instance = inst_prim_for_typ eq_class bool_type in
-  let deref_bool_instance = inst_prim_for_typ deref_class bool_type in
+  let non_numeric_classes = [eq_class; deref_class] in
+  let non_numeric_typs = [t_bool; t_char] in
+  let non_numeric_instances =
+    List.map
+      (fun (cls, typs) -> List.map (fun typ -> inst_prim_for_typ cls typ) typs)
+      (List.map (fun cls -> (cls, non_numeric_typs)) non_numeric_classes)
+    |> List.concat
+  in
   match p with
-  | Program (decls, loc) -> Program (built_in_classes @ instances @ [eq_bool_instance; deref_bool_instance] @ decls, loc)
+  | Program (decls, loc) -> Program (built_in_classes @ instances @ non_numeric_instances @ decls, loc)
 ;;
