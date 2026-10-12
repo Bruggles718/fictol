@@ -1,0 +1,7 @@
+extern "C" def putchar(c: char) -> char
+
+extern "C" def main() -> char:
+    let my_str: ref<char, Static> = "Hello, world!" in
+    putchar(*(my_str));
+    putchar('\n')
+    
