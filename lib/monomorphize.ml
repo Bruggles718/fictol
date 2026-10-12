@@ -17,16 +17,16 @@ let rec typ_to_symbol (t : typ) : string =
   | TyCon tykind -> string_of_tykind tykind
   | TyArrow (ty_lst, ret_ty, call_type) ->
       "$"
-      ^ ExtString.String.join "$" (List.map string_of_typ ty_lst)
+      ^ ExtString.String.join "$" (List.map typ_to_symbol ty_lst)
       ^ "$arrow$$"
-      ^ string_of_typ ret_ty
+      ^ typ_to_symbol ret_ty
   | TyBlank _ -> "blank"
   | TyApp (generic_ty, generic_param_ty_lst) ->
-      string_of_typ generic_ty
+      typ_to_symbol generic_ty
       ^ "$"
-      ^ ExtString.String.join "." (List.map string_of_typ generic_param_ty_lst)
+      ^ ExtString.String.join "." (List.map typ_to_symbol generic_param_ty_lst)
       ^ "$"
-  | _ -> ice (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (string_of_typ t))
+  | _ -> ice (sprintf "typ_to_symbol failure: cannot convert %s to symbol" (typ_to_symbol t))
 ;;
 
 let mangle_name (base : string) (type_args : typ list) : string =
