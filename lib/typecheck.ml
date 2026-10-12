@@ -1136,7 +1136,7 @@ let wanted_from_pred span pred = {w_pred= pred; w_span= span}
 let call_type_of_arrow_typ typ =
   match typ with
   | TyArrow (args, ret, ct) -> ct
-  | _ -> ice "call_type_of_arrow_typ failure: given non arrow type"
+  | _ -> ice (sprintf "call_type_of_arrow_typ failure: given non arrow type %s" (string_of_typ typ))
 ;;
 
 let find_method_info cls d =

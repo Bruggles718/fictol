@@ -1,0 +1,27 @@
+extern "C" def putchar(c: i32) -> i32
+
+def pow(n: i32, exp: i32) -> i32:
+    if exp <= 0:
+        1
+    else:
+        n * pow(n, exp - 1)
+
+def rem_10(n: i32) -> i32:
+    let res = n / 10 in
+    let prod = res * 10 in
+    n - prod
+
+def print_i32(n: i32) -> i32:
+    print_i32_helper(n);
+    putchar(10)
+    
+def print_i32_helper(n: i32) -> i32:
+    if n < 10:
+        putchar(n + 48)
+    else:
+        let rem = rem_10(n) in
+        print_i32_helper(n / 10);
+        print_i32_helper(rem)
+
+extern "C" def main() -> i32:
+    print_i32(1234)
