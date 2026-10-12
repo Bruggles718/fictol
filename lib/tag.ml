@@ -46,21 +46,22 @@ let rename (rename_with_tag: string -> 'a -> string) (p : 'a program) : 'a progr
     | DFun (name, [], args, body, call_type, ret_typ, tag) ->
         let newArgs, env' = helpBS env args in
         DFun (name, [], newArgs, Option.map (helpE env') body, call_type, ret_typ, tag)
-    | _ -> ice "Rename: Found non DFun after monomorphization?? Is that allowed?? Idk"
+    (* | _ -> ice "Rename: Found non DFun after monomorphization?? Is that allowed?? Idk" *)
+    | _ -> decl
   and helpB env b =
     match b with
     | BBlank _ -> (b, env)
     | BName (name, allow_shadow, b_typ, tag) ->
         let name' = rename_with_tag name tag in
         (BName (name', allow_shadow, b_typ, tag), (name, name') :: env)
-  and helpBS env (bs : (tag * typ) bind list) =
+  and helpBS env (bs : 'a bind list) =
     match bs with
     | [] -> ([], env)
     | b :: bs ->
         let b', env' = helpB env b in
         let bs', env'' = helpBS env' bs in
         (b' :: bs', env'')
-  and helpBG env (bindings : (tag * typ) binding list) =
+  and helpBG env (bindings : 'a binding list) =
     match bindings with
     | [] -> ([], env)
     | (b, e, a) :: bindings ->
@@ -100,7 +101,10 @@ let rename (rename_with_tag: string -> 'a -> string) (p : 'a program) : 'a progr
         let body' = helpE env' body in
         ELet (binds', body', tag)
     | EGetReference (body, tag) -> EGetReference (helpE env body, tag)
-    | _ -> ice (sprintf "Rename: unsupported expr %s" (string_of_expr e))
+    | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
+      let new_ref_name = rename_with_tag ref_name tag in
+      EBorrow (helpE env borrowed_expr, new_ref_name, region, helpE ((ref_name, new_ref_name) :: env) body, tag)
+    | _ -> ice (sprintf "Rename: unsupported expr %s" (string_of_expr e)) 
   in
   helpP [] p
 ;;
