@@ -30,6 +30,7 @@ type phase =
   | Desugared of sourcespan program
   | TypeNamesResolved of sourcespan program
   | Monomorphized of typed_tag program
+  | AddBuiltins of sourcespan program
   (* | AddedNatives of sourcespan program *)
   | Tagged of (tag * typ) program
   | ANFed of (tag * typ) aprogram
@@ -58,6 +59,8 @@ let desugared p = Desugared p
 let tagged p = Tagged p
 
 let anfed p = ANFed p
+
+let add_builtins_phase p = AddBuiltins p
 
 (* let add_natives p = AddedNatives p *)
 
@@ -136,6 +139,7 @@ let print_trace (trace : phase list) : string list =
     | TypeChecked _ -> "Type-checked"
     | TypeNamesResolved _ -> "Type-names-resolved"
     | Monomorphized _ -> "Monomorphized"
+    | AddBuiltins _ -> "Add built-ins"
     (* | AddedNatives _ -> "Natives Added" *)
     | Tagged _ -> "Tagged"
     | ANFed _ -> "ANF'ed"
@@ -152,6 +156,7 @@ let print_trace (trace : phase list) : string list =
     | Desugared p -> string_of_program p
     | TypeChecked p -> string_of_program p
     | TypeNamesResolved p -> string_of_program p
+    | AddBuiltins p -> string_of_program p
     | Monomorphized p ->
         string_of_program_with 1000 (fun (tag, typ) -> sprintf ":%s" (string_of_typ typ)) p
     | Tagged p ->

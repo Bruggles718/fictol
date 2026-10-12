@@ -31,12 +31,13 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   let builder = builder context in
   prog
   |> add_err_phase type_names_resolved resolve_prog_typ_paths
-  |> add_err_phase well_formed (fun p -> is_well_formed (add_builtins p))
+  |> add_phase add_builtins_phase add_builtins
+  |> add_err_phase well_formed is_well_formed
   |> add_phase desugared desugar
   |> add_err_phase type_checked type_synth_tc
   |> add_phase monomorphized monomorphize
-  |> add_phase tagged tag_prog
-  |> add_phase renamed rename
+  |> add_phase tagged tag_span_typ_prog
+  |> add_phase renamed (rename tag_other_gensym)
   |> add_phase anfed (fun p -> atag_prog (anf p))
   |> add_phase result (compile_prog context the_module builder)
 ;;

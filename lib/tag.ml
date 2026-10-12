@@ -11,7 +11,16 @@ open Fictol_stubs
 open Compiler_common
 open Typecheck
 
-let tag_prog (p : 'a program) : (tag * typ) program =
+let tag_span_prog (p : sourcespan program) : (tag * sourcespan) program =
+  let next = ref 0 in
+  let tag (span) =
+    next := !next + 1;
+    (!next, span)
+  in
+  map_tags_program tag p
+;;
+
+let tag_span_typ_prog (p : (sourcespan * typ) program) : (tag * typ) program =
   let next = ref 0 in
   let tag (span, typ) =
     next := !next + 1;
@@ -20,22 +29,30 @@ let tag_prog (p : 'a program) : (tag * typ) program =
   map_tags_program tag p
 ;;
 
-let rename (p : (tag * typ) program) : (tag * typ) program =
+let untag_tag_span_prog (p: (tag * sourcespan) program) : sourcespan program =
+  let untag (tag, span) = span in
+  map_tags_program untag p
+
+let tag_other_gensym name ((tag, _) : tag * 'a) =
+  sprintf "%s_%d" name tag
+;;
+
+let rename (rename_with_tag: string -> 'a -> string) (p : 'a program) : 'a program =
   let rec helpP env p =
     match p with
     | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
   and helpD env decl =
     match decl with
-    | DFun (name, [], args, body, call_type, ret_typ, (tag, typ)) ->
+    | DFun (name, [], args, body, call_type, ret_typ, tag) ->
         let newArgs, env' = helpBS env args in
-        DFun (name, [], newArgs, Option.map (helpE env') body, call_type, ret_typ, (tag, typ))
+        DFun (name, [], newArgs, Option.map (helpE env') body, call_type, ret_typ, tag)
     | _ -> ice "Rename: Found non DFun after monomorphization?? Is that allowed?? Idk"
   and helpB env b =
     match b with
     | BBlank _ -> (b, env)
-    | BName (name, allow_shadow, b_typ, (tag, typ)) ->
-        let name' = sprintf "%s_%d" name tag in
-        (BName (name', allow_shadow, b_typ, (tag, typ)), (name, name') :: env)
+    | BName (name, allow_shadow, b_typ, tag) ->
+        let name' = rename_with_tag name tag in
+        (BName (name', allow_shadow, b_typ, tag), (name, name') :: env)
   and helpBS env (bs : (tag * typ) bind list) =
     match bs with
     | [] -> ([], env)
