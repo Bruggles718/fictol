@@ -1,16 +1,3 @@
-# def test_parse(a: i32, b: i32) -> i32:
-#     a + b
-
-# def test_parse2<T, U>(a: T, b: U) -> i32:
-#     a == b
-
-# typeclass Add<T>:
-#     def add(T, T) -> T
-
-# instance Add<i32>:
-#     def add(self: i32, other: i32) -> i32:
-#         self + other
-
 def identity<T>(x: T) -> T:
     x
 

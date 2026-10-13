@@ -12,9 +12,6 @@ instance Square<i32>:
     def side_length(a: i32, b: i32) -> i32:
         a
 
-# def get_area<T: Rect<T>>(a: T, b: T) -> T:
-#     area(a, b)
-
 def get_area_sq<T: Square<T>>(a: T, b: T) -> T:
     let x = area(a, b) in
     side_length(x, x)
