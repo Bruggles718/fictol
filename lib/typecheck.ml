@@ -1662,9 +1662,9 @@ let type_synth_tc (p : sourcespan program) : typed_tag program fallible =
             env funs
         in
         let new_funs = List.map (fun decl -> check_decl new_env (scheme_of_decl decl) decl) funs in
-        let new_instances = List.map (fun inst -> check_instance new_env inst) instances in
-        let new_classes = List.map (fun cls -> check_class_defaults new_env cls) classes in
-        Program (new_classes @ new_instances @ new_funs, blank_tag loc)
+        let _new_instances = List.map (fun inst -> check_instance new_env inst) instances in
+        let _new_classes = List.map (fun cls -> check_class_defaults new_env cls) classes in
+        Program (new_funs, blank_tag loc)
   in
   (* REPLACES infer_prog and infer_group; it now returns the ELABORATED program
    instead of `p` unchanged.
