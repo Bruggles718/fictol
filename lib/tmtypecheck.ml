@@ -1,10 +1,9 @@
+open Printf
 open Errors
 open Types
 open Terms
 open Compiler_common
 open Pretty
-
-type sourcespan = Lexing.position * Lexing.position
 
 let rec tm_free_vars tm =
   match tm with
@@ -152,13 +151,22 @@ type 'a context = (string * 'a term) list
 
 type span_term_pair = (sourcespan * (sourcespan term))
 
-let rec infer_type_term (ctx) (tm) : (sourcespan term * sourcespan tmwanted list * span_term_pair term) =
+
+let rec gensym =
+    let next = ref 0 in
+    fun name ->
+      next := !next + 1;
+      sprintf "%s_%d" name !next
+and infer_type_term (ctx) (tm) : (sourcespan term * sourcespan tmwanted list * span_term_pair term) =
+  let ref_typ tm region =
+    TmApp(TmApp(TmVar("ref", dummy_span), tm, dummy_span), TmVar(region, dummy_span), dummy_span)
+  in
   match tm with
   | TmUniverse lvl -> 
     let typ = TmUniverse (lvl + 1) in
     (typ, [], TmUniverse(lvl))
   | TmLiteral (LitString s, loc) ->
-    let typ = TmApp(TmApp(TmVar("ref", dummy_span), TmVar("char", dummy_span), dummy_span), TmVar("Static", dummy_span), dummy_span) in
+    let typ = ref_typ (TmVar("char", dummy_span)) ("Static") in
     (typ, [], TmLiteral(LitString s, (loc, typ)))
   | TmLiteral (LitChar c, loc) ->
     let typ = TmVar("char", dummy_span) in
@@ -197,7 +205,38 @@ let rec infer_type_term (ctx) (tm) : (sourcespan term * sourcespan tmwanted list
     (m_typ, a_wanteds @ m_wanteds, TmLet(x, new_a, new_m, (loc, m_typ)))
   | TmSeq (t1, t2, loc) ->
     infer_type_term ctx t2
-  (* | TmPrim1 (op, body, loc) -> *)
+  | TmPrim1 (op, body, loc) -> ice "I think prim1s should have been desugared away for type checking?"
+  (* not should be an If by now. Neg is a method call, so is deref? *)
+  | TmPrim2 (op, l, r, loc) -> ice "I think prim2s should have been desugared away for type checking?"
+  (* arithmetic ops are method calls, and and or are If by now? *)
+  | TmGetReference (body, loc) ->
+    let (body_typ, wanteds, new_body) = infer_type_term ctx body in
+    let typ = (ref_typ body_typ (gensym "RN")) in
+    (typ, wanteds, TmGetReference(new_body, (loc, typ)))
+  | TmApp (m, n, loc) ->
+    infer_app_term ctx m n
+  | TmIf (cond, thn, els, loc) ->
+    let (cond_typ, cond_wanteds, new_cond) = infer_type_term ctx cond in
+    let (thn_typ, thn_wanteds, new_thn) = infer_type_term ctx thn in
+    let (els_typ, els_wanteds, new_els) = infer_type_term ctx els in
+    (if alpha_eq cond_typ (TmVar("bool", dummy_span)) then
+      ()
+    else
+      failwith "cond is not bool");
+    (if alpha_eq thn_typ els_typ then () else failwith "if branches must have same types");
+    (thn_typ, cond_wanteds @ thn_wanteds @ els_wanteds, (TmIf(new_cond, new_thn, new_els, (loc, thn_typ))))
+
+
+and infer_app_term (ctx) m n =
+  match infer_type_term ctx m with
+  | (TmLambda (x, a, m, call_type, loc), m_wanteds, new_m) ->
+    let (n_typ, n_wanteds, new_n) = infer_type_term ctx n in
+    let app_typ = (
+      if alpha_eq a n_typ then eval (subst x n m) else failwith "Infer app failure"
+    ) in
+    (app_typ, m_wanteds @ n_wanteds, TmApp(new_m, new_n, (loc, app_typ)))
+  | (m_typ, m_wanteds, new_m) ->
+    failwith "Infer app failure: cannot apply arguments to non lambda"
     
 
 and infer_tmpred ctx pred =
@@ -212,6 +251,13 @@ and infer_universe ctx t =
   match infer_type_term ctx t with
   | (TmUniverse(lvl), twanteds, new_t) -> (TmUniverse(lvl), twanteds, new_t)
   | _ -> raise (InternalCompilerError("infer universe failure: inferred non universe"))
+
+and check_type_term ctx tm expected =
+  let (tm_typ, _, _) = infer_type_term ctx tm in
+  let (expected_typ, _, _) = infer_type_term ctx expected in
+  if alpha_eq tm_typ expected_typ then
+    ()
+  else
+    failwith "Terms not equal"
     
 
-    
