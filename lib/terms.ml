@@ -5,6 +5,7 @@ type 'a term =
   | TmUniverse of int
   | TmPi of string * 'a term * 'a tmpredicate list * 'a term * call_type * 'a
   | TmLambda of string * 'a term * 'a term * call_type * 'a
+  | TmThunk of 'a term * call_type * 'a
   | TmApp of 'a term * 'a term * 'a
   | TmSeq of 'a term * 'a term * 'a
   | TmLet of string * 'a term * 'a term * 'a
@@ -22,3 +23,5 @@ and 'a tmpredicate =
 and 'a tmwanted =
   { w_pred: 'a tmpredicate;
     w_span: 'a (* where the constraint came from, for error messages *) }
+
+and 'a tmprogram = TmProgram of 'a term list

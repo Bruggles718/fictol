@@ -2,6 +2,8 @@ open Printf
 open Errors
 open Types
 open Terms
+open Exprs
+open Typecheck
 open Compiler_common
 open Pretty
 
@@ -10,6 +12,8 @@ let rec tm_free_vars tm =
   | TmVar (x, tag) -> [ x ]
   | TmApp (m, n, tag) -> tm_free_vars m @ tm_free_vars n
   | TmLambda (x, a, m, _, tag) | TmLet(x, a, m, tag) -> tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
+  | TmThunk (m, _, tag) -> 
+    (tm_free_vars m)
   | TmPi (x, a, preds, m, _, tag) -> 
     let ftv_predicates =
         List.concat (List.map ftv_tmpred preds)
@@ -30,6 +34,7 @@ let rec binders tm =
   match tm with
   | TmApp (m, n, tag) -> binders m @ binders n
   | TmLambda (x, a, m, _, tag) | TmLet(x, a, m, tag) -> [x] @ binders a @ (binders m)
+  | TmThunk (m, _, tag) -> (binders m)
   | TmPi (x, a, preds, m,_, tag) -> [x] @ binders a @ (List.concat (List.map binders_tmpred preds)) @ (binders m)
   | TmSeq (t1, t2, tag) -> binders t1 @ binders t2
   | TmPrim1 (op, body, tag) -> binders body
@@ -62,6 +67,7 @@ let rec subst x m tm =
       let banlist = tm_free_vars m @ all_vars n in
       subst x m (rename (freshen banlist y) tm)
   | TmPi (y, a, preds, n, call_type, tag) -> TmPi (y, subst x m a, List.map (subst_tmpred x m) preds, subst x m n, call_type, tag)
+  | TmThunk (n, call_type, tag) -> TmThunk (subst x m n, call_type, tag)
   | TmLet(y, a, n, tag) when x = y -> TmLet (y, subst x m a, n, tag)
   | TmLet (y, a, n, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
@@ -101,6 +107,8 @@ let rec alpha_eq tm1 tm2 =
     let banlist = all_vars m1 @ all_vars m2 in
     let fresh_x = freshen banlist x1 in
     alpha_eq (rename fresh_x tm1) (rename fresh_x tm2)
+  | TmThunk (m1, _, _), TmThunk (m2, _, _) ->
+    alpha_eq m1 m2
   | TmPi(x1, a1, preds1, m1, _, _), TmPi(x2, a2, preds2, m2, _, _) ->
     let banlist = all_vars m1 @ all_vars m2 in
     let fresh_x = freshen banlist x1 in
@@ -130,6 +138,7 @@ let rec eval tm =
   | TmApp (m, n, tag) -> eval_app (eval m) (eval n) tag
   | TmLambda (x, a, m, call_type, tag) -> TmLambda (x, eval a, eval m, call_type, tag)
   | TmPi (x, a, preds, m, call_type, tag) -> TmPi (x, eval a, List.map eval_pred preds, eval m, call_type, tag)
+  | TmThunk (m, call_type, tag) -> TmThunk (eval m, call_type, tag)
   | TmLet (x, a, m, tag) -> TmLet (x, eval a, eval m, tag)
   | TmSeq (t1, t2, tag) -> TmSeq(eval t1, eval t2, tag)
   | TmPrim1 (op, body, tag) -> TmPrim1(op, eval body, tag)
@@ -151,113 +160,337 @@ type 'a context = (string * 'a term) list
 
 type span_term_pair = (sourcespan * (sourcespan term))
 
+let rec pi args body ct tag =
+  match args with
+  | (name, tm, preds) :: rest -> TmPi (name, tm, preds, pi rest body ct tag, ct, tag)
+  | [] -> body
 
-let rec gensym =
-    let next = ref 0 in
-    fun name ->
-      next := !next + 1;
-      sprintf "%s_%d" name !next
-and infer_type_term (ctx) (tm) : (sourcespan term * sourcespan tmwanted list * span_term_pair term) =
-  let ref_typ tm region =
-    TmApp(TmApp(TmVar("ref", dummy_span), tm, dummy_span), TmVar(region, dummy_span), dummy_span)
+let rec lam args body ct tag =
+  match args with
+  | (name, tm) :: rest -> TmLambda (name, tm, lam rest body ct tag, ct, tag)
+  | [] -> body
+
+let type_synth_terms (p: sourcespan program) =
+
+  let rec gensym =
+      let next = ref 0 in
+      fun name ->
+        next := !next + 1;
+        sprintf "%s_%d" name !next
   in
-  match tm with
-  | TmUniverse lvl -> 
-    let typ = TmUniverse (lvl + 1) in
-    (typ, [], TmUniverse(lvl))
-  | TmLiteral (LitString s, loc) ->
-    let typ = ref_typ (TmVar("char", dummy_span)) ("Static") in
-    (typ, [], TmLiteral(LitString s, (loc, typ)))
-  | TmLiteral (LitChar c, loc) ->
-    let typ = TmVar("char", dummy_span) in
-    (typ, [], TmLiteral(LitChar c, (loc, typ)))
-  | TmLiteral (LitBool b, loc) ->
-    let typ = TmVar("bool", dummy_span) in
-    (typ, [], TmLiteral(LitBool b, (loc, typ)))
-  | TmLiteral (LitInt (n, suffix), loc) ->
-    let inttyp = (
-      match suffix with
-      | IntSuffix width -> Int width
-      | UIntSuffix width -> UInt width
-    ) in
-    let typstr = string_of_tykind inttyp in
-    let typ = TmVar(typstr, dummy_span) in
-    (typ, [], TmLiteral(LitInt(n, suffix), (loc, typ)))
-  | TmVar (x, loc) -> 
-    let typ = eval (List.assoc x ctx) in
-    let (typ_typ, typ_wanteds, new_typ) = infer_type_term ctx typ in
-    (typ, typ_wanteds, (TmVar(x, (loc, typ))))
-  | TmLambda (x, a, m, call_type, loc) ->
-    let (a_typ, a_wanteds, new_a) = infer_type_term ctx a in
-    let (m_typ, m_wanteds, new_m) = infer_type_term ((x, a) :: ctx) m in
-    let lam_typ = TmPi(x, a, [], m_typ, call_type, loc) in
-    let _ = infer_type_term ctx lam_typ in
-    let evaluated_lam_typ = eval lam_typ in
-    (evaluated_lam_typ, a_wanteds @ m_wanteds, TmLambda(x, new_a, new_m, call_type, (loc, evaluated_lam_typ)))
-  | TmPi (x, a, preds, m, call_type, loc) ->
-    let (_, a_wanteds, new_a) = infer_universe ctx a in
-    let (pred_wanteds, new_preds) = List.split (List.map (infer_tmpred ctx) preds) in
-    let (m_typ, m_wanteds, new_m) = infer_universe ctx m in
-    (m_typ, a_wanteds @ List.concat pred_wanteds @ m_wanteds, TmPi(x, new_a, new_preds, new_m, call_type, (loc, m_typ)))
-  | TmLet (x, a, m, loc) ->
-    let (a_typ, a_wanteds, new_a) = infer_type_term ctx a in
-    let (m_typ, m_wanteds, new_m) = infer_type_term ((x, a) :: ctx) m in
-    (m_typ, a_wanteds @ m_wanteds, TmLet(x, new_a, new_m, (loc, m_typ)))
-  | TmSeq (t1, t2, loc) ->
-    infer_type_term ctx t2
-  | TmPrim1 (op, body, loc) -> ice "I think prim1s should have been desugared away for type checking?"
-  (* not should be an If by now. Neg is a method call, so is deref? *)
-  | TmPrim2 (op, l, r, loc) -> ice "I think prim2s should have been desugared away for type checking?"
-  (* arithmetic ops are method calls, and and or are If by now? *)
-  | TmGetReference (body, loc) ->
-    let (body_typ, wanteds, new_body) = infer_type_term ctx body in
-    let typ = (ref_typ body_typ (gensym "RN")) in
-    (typ, wanteds, TmGetReference(new_body, (loc, typ)))
-  | TmApp (m, n, loc) ->
-    infer_app_term ctx m n
-  | TmIf (cond, thn, els, loc) ->
-    let (cond_typ, cond_wanteds, new_cond) = infer_type_term ctx cond in
-    let (thn_typ, thn_wanteds, new_thn) = infer_type_term ctx thn in
-    let (els_typ, els_wanteds, new_els) = infer_type_term ctx els in
-    (if alpha_eq cond_typ (TmVar("bool", dummy_span)) then
-      ()
-    else
-      failwith "cond is not bool");
-    (if alpha_eq thn_typ els_typ then () else failwith "if branches must have same types");
-    (thn_typ, cond_wanteds @ thn_wanteds @ els_wanteds, (TmIf(new_cond, new_thn, new_els, (loc, thn_typ))))
+  let rec fresh_subst (vars : string list) : typ subst =
+    (* Map each v to TyVar (gensym_typ v). Used to rename instance variables apart
+   before an overlap check, and to instantiate schemes. *)
+    List.map (fun s -> (s, TyVar (gensym s))) vars
+  in
+  let overlaps (i1 : 'a instance_info) (i2 : 'a instance_info) : bool =
+    (* Rename each instance's variables apart with fresh_subst, THEN call your
+   existing `unifiable` on the two heads. Without renaming, `impl<T> C for
+   Pair<T, T>` and `impl<U> C for Pair<U, i32>` are compared with shared
+   variable names and give wrong answers. Requires the unify occurs-check fix
+   (see PART 3 notes). *)
+    let i1_subst = fresh_subst i1.instance_vars in
+    let i1_subbed_head = apply_subst_pred i1_subst i1.instance_head in
+    let i2_subst = fresh_subst i2.instance_vars in
+    let i2_subbed_head = apply_subst_pred i2_subst i2.instance_head in
+    unifiable i1_subbed_head i2_subbed_head
+  in
+  let register_instance (inst : sourcespan instance_info) : unit =
+    (* Validate then insert into instance_table. Checks:
+   - the class exists and List.length head args = List.length class_params;
+   - no existing instance of the class `overlaps` this one (OverlappingInstance);
+   - every variable in instance_context also occurs in the head;
+   - every method in instance_methods belongs to the class (ExtraMethod), and
+     every class method without a default is present (MissingMethod).
+   Does NOT check method bodies or superclass obligations; those need ALL
+   instances registered first (see check_instance). *)
+    let class_exists inst : sourcespan class_info =
+      let cls_name = inst.instance_head.pred_class in
+      match Hashtbl.find_opt class_table cls_name with
+      | Some cls ->
+          if List.length inst.instance_head.pred_args = List.length cls.class_params then
+            cls
+          else
+            failwith "Class param arity mismatch"
+      | None -> failwith (sprintf "No class %s found" cls_name)
+    in
+    let no_overlap cls_name inst : unit =
+      let existing = Hashtbl.find instance_table cls_name in
+      List.iter
+        (fun inst_item ->
+          if overlaps inst inst_item then
+            failwith
+              (sprintf "Overlapping instances %s and %s" inst.instance_id inst_item.instance_id) )
+        existing
+    in
+    let context_and_params_check inst : unit =
+      let context_vars =
+        List.fold_left
+          (fun acc pred -> StringSet.union acc (ftv_pred pred))
+          StringSet.empty inst.instance_context
+      in
+      let head_vars = ftv_pred inst.instance_head in
+      if StringSet.is_empty (StringSet.diff context_vars head_vars) then
+        ()
+      else
+        failwith
+          (sprintf "Mismatched variable usage in instance context and instance head for %s"
+             inst.instance_id )
+    in
+    let class_info_required_method_names cls : StringSet.t =
+      List.filter (fun method_info -> not method_info.m_has_default) cls.class_methods
+      |> List.map (fun method_info -> method_info.m_name)
+      |> StringSet.of_list
+    in
+    let methods_belong cls inst : unit =
+      let required_methods = class_info_required_method_names cls in
+      let implemented_methods = StringSet.of_list inst.instance_methods in
+      if StringSet.is_empty (StringSet.diff required_methods implemented_methods) then
+        ()
+      else
+        failwith (sprintf "%s does not implement the required methods" inst.instance_id)
+    in
+    let validate_instance (inst : sourcespan instance_info) : unit =
+      let cls = class_exists inst in
+      no_overlap cls.class_name inst;
+      context_and_params_check inst;
+      methods_belong cls inst;
+      let existing = Hashtbl.find instance_table cls.class_name in
+      Hashtbl.replace instance_table cls.class_name (inst :: existing)
+    in
+    validate_instance inst
+  in
+  let rec infer_type_term (ctx) (tm) : (sourcespan term * sourcespan tmwanted list * span_term_pair term) =
+    let ref_typ tm region =
+      TmApp(TmApp(TmVar("ref", dummy_span), tm, dummy_span), TmVar(region, dummy_span), dummy_span)
+    in
+    match tm with
+    | TmUniverse lvl -> 
+      let typ = TmUniverse (lvl + 1) in
+      (typ, [], TmUniverse(lvl))
+    | TmLiteral (LitString s, loc) ->
+      let typ = ref_typ (TmVar("char", dummy_span)) ("Static") in
+      (typ, [], TmLiteral(LitString s, (loc, typ)))
+    | TmLiteral (LitChar c, loc) ->
+      let typ = TmVar("char", dummy_span) in
+      (typ, [], TmLiteral(LitChar c, (loc, typ)))
+    | TmLiteral (LitBool b, loc) ->
+      let typ = TmVar("bool", dummy_span) in
+      (typ, [], TmLiteral(LitBool b, (loc, typ)))
+    | TmLiteral (LitInt (n, suffix), loc) ->
+      let inttyp = (
+        match suffix with
+        | IntSuffix width -> Int width
+        | UIntSuffix width -> UInt width
+      ) in
+      let typstr = string_of_tykind inttyp in
+      let typ = TmVar(typstr, dummy_span) in
+      (typ, [], TmLiteral(LitInt(n, suffix), (loc, typ)))
+    | TmVar (x, loc) -> 
+      let typ = eval (List.assoc x ctx) in
+      let (typ_typ, typ_wanteds, new_typ) = infer_type_term ctx typ in
+      (typ, typ_wanteds, (TmVar(x, (loc, typ))))
+    | TmLambda (x, a, m, call_type, loc) ->
+      let (a_typ, a_wanteds, new_a) = infer_type_term ctx a in
+      let (m_typ, m_wanteds, new_m) = infer_type_term ((x, a) :: ctx) m in
+      let lam_typ = TmPi(x, a, [], m_typ, call_type, loc) in
+      let _ = infer_type_term ctx lam_typ in
+      let evaluated_lam_typ = eval lam_typ in
+      (evaluated_lam_typ, a_wanteds @ m_wanteds, TmLambda(x, new_a, new_m, call_type, (loc, evaluated_lam_typ)))
+    | TmThunk (m, call_type, loc) ->
+      let (m_typ, m_wanteds, new_m) = infer_universe ctx m in
+      (m_typ, m_wanteds, TmThunk(new_m, call_type, (loc, m_typ)))
+    | TmPi (x, a, preds, m, call_type, loc) ->
+      let (_, a_wanteds, new_a) = infer_universe ctx a in
+      let (pred_wanteds, new_preds) = List.split (List.map (infer_tmpred ctx) preds) in
+      let (m_typ, m_wanteds, new_m) = infer_universe ctx m in
+      (m_typ, a_wanteds @ List.concat pred_wanteds @ m_wanteds, TmPi(x, new_a, new_preds, new_m, call_type, (loc, m_typ)))
+    | TmLet (x, a, m, loc) ->
+      let (a_typ, a_wanteds, new_a) = infer_type_term ctx a in
+      let (m_typ, m_wanteds, new_m) = infer_type_term ((x, a) :: ctx) m in
+      (m_typ, a_wanteds @ m_wanteds, TmLet(x, new_a, new_m, (loc, m_typ)))
+    | TmSeq (t1, t2, loc) ->
+      infer_type_term ctx t2
+    | TmPrim1 (op, body, loc) -> ice "I think prim1s should have been desugared away for type checking?"
+    (* not should be an If by now. Neg is a method call, so is deref? *)
+    | TmPrim2 (op, l, r, loc) -> ice "I think prim2s should have been desugared away for type checking?"
+    (* arithmetic ops are method calls, and and or are If by now? *)
+    | TmGetReference (body, loc) ->
+      let (body_typ, wanteds, new_body) = infer_type_term ctx body in
+      let typ = (ref_typ body_typ (gensym "RN")) in
+      (typ, wanteds, TmGetReference(new_body, (loc, typ)))
+    | TmApp (m, n, loc) ->
+      infer_app_term ctx m n
+    | TmIf (cond, thn, els, loc) ->
+      let (cond_typ, cond_wanteds, new_cond) = infer_type_term ctx cond in
+      let (thn_typ, thn_wanteds, new_thn) = infer_type_term ctx thn in
+      let (els_typ, els_wanteds, new_els) = infer_type_term ctx els in
+      (if alpha_eq cond_typ (TmVar("bool", dummy_span)) then
+        ()
+      else
+        failwith "cond is not bool");
+      (if alpha_eq thn_typ els_typ then () else failwith "if branches must have same types");
+      (thn_typ, cond_wanteds @ thn_wanteds @ els_wanteds, (TmIf(new_cond, new_thn, new_els, (loc, thn_typ))))
 
 
-and infer_app_term (ctx) m n =
-  match infer_type_term ctx m with
-  | (TmLambda (x, a, m, call_type, loc), m_wanteds, new_m) ->
-    let (n_typ, n_wanteds, new_n) = infer_type_term ctx n in
-    let app_typ = (
-      if alpha_eq a n_typ then eval (subst x n m) else failwith "Infer app failure"
-    ) in
-    (app_typ, m_wanteds @ n_wanteds, TmApp(new_m, new_n, (loc, app_typ)))
-  | (m_typ, m_wanteds, new_m) ->
-    failwith "Infer app failure: cannot apply arguments to non lambda"
-    
+  and infer_app_term (ctx) m n =
+    match infer_type_term ctx m with
+    | (TmPi (x, a, preds, m, call_type, loc), m_wanteds, new_m) ->
+      let (n_typ, n_wanteds, new_n) = infer_type_term ctx n in
+      let app_typ = (
+        if alpha_eq a n_typ then eval (subst x n m) else failwith "Infer app failure"
+      ) in
+      (app_typ, m_wanteds @ n_wanteds, TmApp(new_m, new_n, (loc, app_typ)))
+    | (TmThunk (m, call_type, loc), m_wanteds, new_m) ->
+      (* probably should check that n is nothing or unit or something? or maybe I need a separate term for calling a thunk *)
+      let (n_typ, n_wanteds, new_n) = infer_type_term ctx n in
+      let app_typ = eval m in
+      (app_typ, m_wanteds @ n_wanteds, TmApp(new_m, new_n, (loc, app_typ)))
+    | (m_typ, m_wanteds, new_m) ->
+      failwith "Infer app failure: cannot apply arguments to non lambda"
+      
 
-and infer_tmpred ctx pred =
-  let (arg_typs, wanteds, new_args) = 
-    List.fold_right (fun (arg_typ, arg_wanteds, new_arg) (res_types, res_wanteds, res_args)  ->
-      (arg_typ :: res_types, arg_wanteds @ res_wanteds, new_arg :: res_args)) (List.map (infer_type_term ctx) pred.pred_args) ([], [], []) in
-  (wanteds, {pred_class = pred.pred_class; pred_args = new_args})
+  and infer_tmpred ctx pred =
+    let (arg_typs, wanteds, new_args) = 
+      List.fold_right (fun (arg_typ, arg_wanteds, new_arg) (res_types, res_wanteds, res_args)  ->
+        (arg_typ :: res_types, arg_wanteds @ res_wanteds, new_arg :: res_args)) (List.map (infer_type_term ctx) pred.pred_args) ([], [], []) in
+    (wanteds, {pred_class = pred.pred_class; pred_args = new_args})
 
 
 
-and infer_universe ctx t =
-  match infer_type_term ctx t with
-  | (TmUniverse(lvl), twanteds, new_t) -> (TmUniverse(lvl), twanteds, new_t)
-  | _ -> raise (InternalCompilerError("infer universe failure: inferred non universe"))
+  and infer_universe ctx t =
+    match infer_type_term ctx t with
+    | (TmUniverse(lvl), twanteds, new_t) -> (TmUniverse(lvl), twanteds, new_t)
+    | _ -> raise (InternalCompilerError("infer universe failure: inferred non universe"))
 
-and check_type_term ctx tm expected =
-  let (tm_typ, _, _) = infer_type_term ctx tm in
-  let (expected_typ, _, _) = infer_type_term ctx expected in
-  if alpha_eq tm_typ expected_typ then
-    ()
-  else
-    failwith "Terms not equal"
-    
+  and term_of_typ tag (typ : typ) : 'a term =
+    match typ with
+    | TyVar (name) -> TmVar (name, tag)
+    | TyArrow (args, ret, ct) ->
+      let term_args =
+        List.map
+        (fun arg ->
+          ((gensym "Tm"), term_of_typ tag arg, []))
+        args in
+      let term_ret_typ = term_of_typ tag ret in
+      (
+        match args with
+        | [] -> TmThunk(term_ret_typ, ct, tag)
+        | _ -> pi term_args term_ret_typ ct tag
+      )
+    | TyApp(ret, args) ->
+      List.fold_right (fun arg acc ->
+        TmApp(term_of_typ tag arg, acc, tag))
+      (ret :: args) (TmVar(gensym "UNIT", tag))
+    | _ -> ice "cannot convert type to term"
 
+
+  and tmpred_of_pred tag (pred: 'a predicate) =
+    { pred_class=pred.pred_class; pred_args = List.map (term_of_typ tag) pred.pred_args }
+  
+  and term_of_bind arg = (
+          match arg with
+          | BName (name, _, typ, loc) -> (name, term_of_typ loc typ, [])
+          | BBlank (loc) -> ice "Unsupported binding type in decl")
+  and term_of_generic_bind gen =
+    match gen with
+    | GBName (name, preds, loc) -> (name, TmUniverse 0, List.map (tmpred_of_pred loc) preds)
+
+  and pi_of_decl d =
+    match d with
+    | DFun(name, generics, args, _, call_type, ret_typ, loc) ->
+      let term_args = 
+        List.map
+        term_of_bind
+        args in
+      let term_generics =
+        List.map
+        term_of_generic_bind
+        generics in
+      let term_ret_typ = term_of_typ loc ret_typ in
+      let all_term_args = (term_generics @ term_args) in
+      (match all_term_args with
+      | [] -> TmThunk(term_ret_typ, call_type, loc)
+      | _ -> pi all_term_args term_ret_typ call_type loc)
+    | DClass _ | DInstance _ -> ice "cannot get pi of non DFun"
+  and pi_of_method (cls : 'a class_info) (m : 'a method_info) : 'a term =
+    let m_arrow_typ_term = term_of_typ dummy_span m.m_typ in
+    let generic_terms = List.map term_of_generic_bind m.m_generics in
+    pi generic_terms m_arrow_typ_term (FictolFunc) dummy_span
+  and term_of_expr expr = failwith "TODO"
+  and lam_of_decl d =
+    match d with
+    | DFun(name, generics, args, Some(body), call_type, ret_typ, loc) ->
+      let term_args = 
+        List.map
+        (fun arg ->
+          match arg with
+          | BName (name, _, typ, loc) -> (name, term_of_typ loc typ)
+          | BBlank (loc) -> ice "Unsupported binding type in decl")
+        args in
+      let term_generics =
+        List.map
+        (fun gen ->
+          match gen with
+          | GBName (name, preds, loc) -> (name, TmUniverse 0))
+        generics in
+      (* let term_ret_typ = term_of_typ ret_typ in *)
+      let all_term_args = (term_generics @ term_args) in
+      (
+        match all_term_args with
+        | [] -> TmThunk(term_of_expr body, call_type, loc)
+        | first :: rest -> lam (term_generics @ term_args) (term_of_expr body) call_type loc
+      )
+    | DFun _ -> ice "cannot get lam of non DFun without body"
+    | DClass _ | DInstance _ -> ice "cannot get lam of non DFun"
+  and check_decl ctx d =
+    match d with
+    | DFun(name, generics, args, Some(body), call_type, ret_typ, loc) ->
+      let decl_term = lam_of_decl d in
+      let expected_typ = pi_of_decl d in
+      let (inferred_typ, wanteds, inferred_decl_term) = infer_type_term ctx decl_term in
+      if alpha_eq inferred_typ expected_typ then
+        (* solve_wanteds. if any residual, fail, ambiguous type *)
+        inferred_decl_term
+      else
+        failwith "Check decl failure: stated type and actual type differ"
+    | _ -> ice "given non dfun?"
+      
+  and infer_prog_term (env) (p: sourcespan program) =
+    match p with
+    | Program (decls, loc) ->
+      let classes, instances, funs = partition_decls decls in
+      let new_env =
+        List.fold_left
+            (fun acc_env decl -> ((name_of_dfun decl), (pi_of_decl decl)) :: acc_env)
+            env funs
+      in
+      let new_funs = List.map (check_decl new_env) funs in
+      TmProgram new_funs
+      
+  in
+  let method_env () : (string * 'a term) list =
+  (* For every class and every method, add m_name |-> scheme_of_method cls m.
+   This map is the INITIAL value environment: type_synth passes it to the
+   inference code instead of StringMap.empty, so `EId "add"` finds a scheme. *)
+    let _, all_classes = List.split (List.of_seq (Hashtbl.to_seq class_table)) in
+    List.fold_left
+      (fun acc cls ->
+        List.fold_left
+          (fun acc method_info ->
+            (method_info.m_name, (pi_of_method cls method_info)) :: acc )
+          acc cls.class_methods )
+      [] all_classes
+  in
+  try
+    match p with
+    | Program (decls, loc) ->
+      reset_class_state ();
+      let classes, instances, funs = partition_decls decls in
+      List.iter register_class classes;
+      validate_classes ();
+      List.iter (fun d -> register_instance (instance_info_of_decl d)) instances;
+      let env = method_env () in
+        let new_p = infer_prog_term env p in
+        Ok new_p
+  with e -> Error [e]
