@@ -11,7 +11,7 @@ let rec tm_free_vars tm =
   match tm with
   | TmVar (x, tag) -> [ x ]
   | TmApp (m, n, tag) -> tm_free_vars m @ tm_free_vars n
-  | TmLambda (x, a, m, _, tag) | TmLet(x, a, m, tag) -> tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
+  | TmLambda (x, a, m, _, tag) -> tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
   | TmThunk (m, _, tag) -> 
     (tm_free_vars m)
   | TmPi (x, a, preds, m, _, tag) -> 
@@ -19,11 +19,7 @@ let rec tm_free_vars tm =
         List.concat (List.map ftv_tmpred preds)
       in
     ftv_predicates @ tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
-  | TmSeq (t1, t2, tag) -> tm_free_vars t1 @ tm_free_vars t2
-  | TmPrim1 (op, body, tag) -> tm_free_vars body
-  | TmPrim2 (op, l, r, tag) -> tm_free_vars l @ tm_free_vars r
   | TmIf (cond, thn, els, tag) -> tm_free_vars cond @ tm_free_vars thn @ tm_free_vars els
-  | TmGetReference (body, tag) -> tm_free_vars body
   | TmUniverse _ | TmLiteral _ -> []
 
 and ftv_tmpred (p : 'a tmpredicate) : (string list) =
@@ -33,14 +29,10 @@ and ftv_tmpred (p : 'a tmpredicate) : (string list) =
 let rec binders tm =
   match tm with
   | TmApp (m, n, tag) -> binders m @ binders n
-  | TmLambda (x, a, m, _, tag) | TmLet(x, a, m, tag) -> [x] @ binders a @ (binders m)
+  | TmLambda (x, a, m, _, tag) -> [x] @ binders a @ (binders m)
   | TmThunk (m, _, tag) -> (binders m)
   | TmPi (x, a, preds, m,_, tag) -> [x] @ binders a @ (List.concat (List.map binders_tmpred preds)) @ (binders m)
-  | TmSeq (t1, t2, tag) -> binders t1 @ binders t2
-  | TmPrim1 (op, body, tag) -> binders body
-  | TmPrim2 (op, l, r, tag) -> binders l @ binders r
   | TmIf (cond, thn, els, tag) -> binders cond @ binders thn @ binders els
-  | TmGetReference (body, tag) -> binders body
   | TmUniverse _ | TmLiteral _ | TmVar _ -> []
 
 and binders_tmpred p =
@@ -68,16 +60,7 @@ let rec subst x m tm =
       subst x m (rename (freshen banlist y) tm)
   | TmPi (y, a, preds, n, call_type, tag) -> TmPi (y, subst x m a, List.map (subst_tmpred x m) preds, subst x m n, call_type, tag)
   | TmThunk (n, call_type, tag) -> TmThunk (subst x m n, call_type, tag)
-  | TmLet(y, a, n, tag) when x = y -> TmLet (y, subst x m a, n, tag)
-  | TmLet (y, a, n, tag) when List.mem y (tm_free_vars m) ->
-      let banlist = tm_free_vars m @ all_vars n in
-      subst x m (rename (freshen banlist y) tm)
-  | TmLet (y, a, n, tag) -> TmLet (y, subst x m a, subst x m n, tag)
-  | TmSeq (t1, t2, tag) -> TmSeq(subst x m t1, subst x m t2, tag)
-  | TmPrim1 (op, body, tag) -> TmPrim1(op, subst x m body, tag)
-  | TmPrim2 (op, l, r, tag) -> TmPrim2(op, subst x m l, subst x m r, tag)
   | TmIf (cond, thn, els, tag) -> TmIf(subst x m cond, subst x m thn, subst x m els, tag)
-  | TmGetReference (body, tag) -> TmGetReference(subst x m body, tag)
   | TmLiteral _ | TmVar _ | TmUniverse _ -> tm
 
 and subst_tmpred x m pred =
@@ -87,7 +70,6 @@ and rename x' binder =
   match binder with
   | TmLambda (x, a, m, call_type, tag) -> TmLambda (x', a, (subst x (TmVar (x',tag)) m), call_type, tag)
   | TmPi (x, a, preds, m, call_type, tag) -> TmPi (x', a, List.map (subst_tmpred x (TmVar(x', tag))) preds, (subst x (TmVar (x',tag)) m), call_type, tag)
-  | TmLet (x, a, m, tag) -> TmLet (x', a, (subst x (TmVar (x',tag)) m), tag)
   | _ -> raise (InternalCompilerError("rename term failure: Given non binder"))
   
 let rec alpha_eq tm1 tm2 =
@@ -96,14 +78,11 @@ let rec alpha_eq tm1 tm2 =
   | TmApp(a1, b1, _), TmApp(a2, b2, _) -> alpha_eq a1 a2 && alpha_eq b1 b2
   | TmLambda(x1, a1, m1, call_type1, _), TmLambda(x2, a2, m2, call_type2, _) when x1 = x2 ->
     call_type1 = call_type2 && alpha_eq a1 a2 && alpha_eq m1 m2
-  | TmLet(x1, a1, m1, _), TmLet(x2, a2, m2, _) when x1 = x2 ->
-    alpha_eq a1 a2 && alpha_eq m1 m2
   | TmPi(x1, a1, preds1, m1, call_type1, _), TmPi(x2, a2, preds2, m2, call_type2, _) when x1 = x2 ->
     let eq_preds = (List.map (fun (p1, p2) -> alpha_eq_preds p1 p2) (List.combine preds1 preds2)) in
     let eq_preds_folded = List.fold_left (fun acc result -> result && acc) true eq_preds in
     call_type1 = call_type2 && alpha_eq a1 a2 && eq_preds_folded && alpha_eq m1 m2
-  | TmLambda(x1, a1, m1, _, _), TmLambda(x2, a2, m2, _, _)
-  | TmLet(x1, a1, m1, _), TmLet(x2, a2, m2, _) ->
+  | TmLambda(x1, a1, m1, _, _), TmLambda(x2, a2, m2, _, _) ->
     let banlist = all_vars m1 @ all_vars m2 in
     let fresh_x = freshen banlist x1 in
     alpha_eq (rename fresh_x tm1) (rename fresh_x tm2)
@@ -113,18 +92,10 @@ let rec alpha_eq tm1 tm2 =
     let banlist = all_vars m1 @ all_vars m2 in
     let fresh_x = freshen banlist x1 in
     alpha_eq (rename fresh_x tm1) (rename fresh_x tm2)
-  | TmSeq(t11, t21, _), TmSeq(t12, t22, _) ->
-    alpha_eq t11 t12 && alpha_eq t21 t22
-  | TmPrim1(op1, body1, _), TmPrim1(op2, body2, _) ->
-    op1 = op2 && alpha_eq body1 body2
-  | TmPrim2(op1, l1, r1, _), TmPrim2(op2, l2, r2, _) ->
-    op1 = op2 && alpha_eq l1 l2 && alpha_eq r1 r2
   | TmIf(cond1, thn1, els1, _), TmIf(cond2, thn2, els2, _) ->
     alpha_eq cond1 cond2 && alpha_eq thn1 thn2 && alpha_eq els1 els2
   | TmLiteral(l1, _), TmLiteral(l2, _) ->
     l1 = l2
-  | TmGetReference(body1, _), TmGetReference(body2, _) ->
-    alpha_eq body1 body2
   | TmUniverse(lvl1), TmUniverse(lvl2) -> lvl1 = lvl2
   | _, _ -> false
 
@@ -139,12 +110,7 @@ let rec eval tm =
   | TmLambda (x, a, m, call_type, tag) -> TmLambda (x, eval a, eval m, call_type, tag)
   | TmPi (x, a, preds, m, call_type, tag) -> TmPi (x, eval a, List.map eval_pred preds, eval m, call_type, tag)
   | TmThunk (m, call_type, tag) -> TmThunk (eval m, call_type, tag)
-  | TmLet (x, a, m, tag) -> TmLet (x, eval a, eval m, tag)
-  | TmSeq (t1, t2, tag) -> TmSeq(eval t1, eval t2, tag)
-  | TmPrim1 (op, body, tag) -> TmPrim1(op, eval body, tag)
-  | TmPrim2 (op, l, r, tag) -> TmPrim2(op, eval l, eval r, tag)
   | TmIf (cond, thn, els, tag) -> TmIf(eval cond, eval thn, eval els, tag)
-  | TmGetReference (body, tag) -> TmGetReference (eval body, tag)
   | TmLiteral _ | TmVar _ | TmUniverse _ -> tm
 
 and eval_pred pred =
@@ -152,7 +118,7 @@ and eval_pred pred =
 
 and eval_app m n tag =
   match m with
-  | TmLambda(x, a, m, call_type, tag) -> eval (subst x n m)
+  | TmLambda(x, a, m, _, tag) -> eval (subst x n m)
   | _ -> TmApp (m, n, tag)
 
 
@@ -305,20 +271,6 @@ let type_synth_terms (p: sourcespan program) =
       let (pred_wanteds, new_preds) = List.split (List.map (infer_tmpred ctx) preds) in
       let (m_typ, m_wanteds, new_m) = infer_universe ctx m in
       (m_typ, a_wanteds @ List.concat pred_wanteds @ m_wanteds, TmPi(x, new_a, new_preds, new_m, call_type, (loc, m_typ)))
-    | TmLet (x, a, m, loc) ->
-      let (a_typ, a_wanteds, new_a) = infer_type_term ctx a in
-      let (m_typ, m_wanteds, new_m) = infer_type_term ((x, a) :: ctx) m in
-      (m_typ, a_wanteds @ m_wanteds, TmLet(x, new_a, new_m, (loc, m_typ)))
-    | TmSeq (t1, t2, loc) ->
-      infer_type_term ctx t2
-    | TmPrim1 (op, body, loc) -> ice "I think prim1s should have been desugared away for type checking?"
-    (* not should be an If by now. Neg is a method call, so is deref? *)
-    | TmPrim2 (op, l, r, loc) -> ice "I think prim2s should have been desugared away for type checking?"
-    (* arithmetic ops are method calls, and and or are If by now? *)
-    | TmGetReference (body, loc) ->
-      let (body_typ, wanteds, new_body) = infer_type_term ctx body in
-      let typ = (ref_typ body_typ (gensym "RN")) in
-      (typ, wanteds, TmGetReference(new_body, (loc, typ)))
     | TmApp (m, n, loc) ->
       infer_app_term ctx m n
     | TmIf (cond, thn, els, loc) ->

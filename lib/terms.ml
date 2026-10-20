@@ -7,14 +7,9 @@ type 'a term =
   | TmLambda of string * 'a term * 'a term * call_type * 'a
   | TmThunk of 'a term * call_type * 'a
   | TmApp of 'a term * 'a term * 'a
-  | TmSeq of 'a term * 'a term * 'a
-  | TmLet of string * 'a term * 'a term * 'a
-  | TmPrim1 of prim1 * 'a term * 'a
-  | TmPrim2 of prim2 * 'a term * 'a term * 'a
   | TmIf of 'a term * 'a term * 'a term * 'a
   | TmLiteral of lit * 'a
   | TmVar of string * 'a
-  | TmGetReference of 'a term * 'a
 
 and 'a tmpredicate =
   { pred_class: string;
