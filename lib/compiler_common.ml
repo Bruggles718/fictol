@@ -158,6 +158,8 @@ let overloaded_prim1 (op : prim1) : (string * string) option =
   match op with
   | Neg -> Some ("Neg", "neg")
   | Deref -> Some("Deref", "deref")
+  | Ref -> Some("Ref", "ref")
+  | Not -> Some("Not", "not")
   | _ -> None
 ;;
 
@@ -227,6 +229,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
           | None -> ice "seriously what??" ) )
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
+  let not_class = make_class "Not" params_self [] [make_prim1_method "not" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" t_bool] in
   let deref_class = make_class "Deref" params_self [] [
     {
@@ -235,6 +238,17 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
       ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; TyVar("R")]))];
       ms_ret = self;
+      ms_default = None;
+      ms_span = dummy_span
+    }
+  ] in
+  let ref_class = make_class "Ref" params_self [] [
+    {
+      ms_name = "ref";
+      ms_generics = [(GBName("R", [], dummy_span))];
+      (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
+      ms_args = [make_arg "a" self];
+      ms_ret = (TyApp(TyCon(Reference), [self; TyVar("R")]));
       ms_default = None;
       ms_span = dummy_span
     }
@@ -263,8 +277,10 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   in
   let name_to_prim1_op name =
     match name with
+    | "not" -> Not
     | "neg" -> Neg
     | "deref" -> Deref
+    | "ref" -> Ref
     | _ -> ice "not prim1, what??"
   in
   let inst_prim_for_typ cls typ =
@@ -284,6 +300,24 @@ let add_builtins (p : sourcespan program) : sourcespan program =
         DInstance ([], {pred_class= name; pred_args= [typ]}, method_impls, dummy_span)
     | _ -> ice "not class, what??"
   in
+  let inst_generic_prim cls =
+    let typ = TyVar("T") in
+    match cls with
+    | DClass (name, params, superclasses, method_sigs, dummy_span) ->
+        let method_impls =
+          List.map
+            (fun method_sig ->
+              try
+                let prim_op = name_to_prim2_op method_sig.ms_name in
+                ImplPrim2 prim_op
+              with _ ->
+                let prim_op = name_to_prim1_op method_sig.ms_name in
+                ImplPrim1 prim_op )
+            method_sigs
+        in
+        DInstance ([(GBName("T", [], dummy_span))], {pred_class= name; pred_args= [typ]}, method_impls, dummy_span)
+    | _ -> ice "not class, what??"
+  in
   let instances =
     List.map
       (fun (cls, typs) -> List.map (fun typ -> inst_prim_for_typ cls typ) typs)
@@ -298,6 +332,8 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       (List.map (fun cls -> (cls, non_numeric_typs)) non_numeric_classes)
     |> List.concat
   in
+  let not_instance = inst_prim_for_typ not_class t_bool in
+  let ref_instance = inst_generic_prim ref_class in
   match p with
-  | Program (decls, loc) -> Program (built_in_classes @ instances @ non_numeric_instances @ decls, loc)
+  | Program (decls, loc) -> Program ([not_class; ref_class] @ built_in_classes @ instances @ non_numeric_instances @ [not_instance; ref_instance] @ decls, loc)
 ;;

@@ -30,6 +30,7 @@ let string_of_op1 op =
   | Not -> "!"
   | Neg -> "-"
   | Deref -> "*"
+  | Ref -> "ref"
 ;;
 
 let name_of_op1 op =
@@ -41,6 +42,7 @@ let name_of_op1 op =
   | Not -> "Not"
   | Neg -> "Neg"
   | Deref -> "Deref"
+  | Ref -> "Ref"
 ;;
 
 let string_of_op2 op =

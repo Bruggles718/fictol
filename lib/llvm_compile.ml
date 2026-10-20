@@ -133,10 +133,23 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
         let _, ltyp = tag_of_immexpr left in
         let _, rtyp = tag_of_immexpr right in
         (prim2_to_llvm_op op ltyp rtyp) l r (sprintf "cprim2_%d" tag) builder
-    | CPrim1 (op, body, (tag, typ)) ->
-        let b = compile_immexpr env body in
-        let _, b_typ = tag_of_immexpr body in
-        (prim1_to_llvm_op op b_typ) b (sprintf "cprim1_%d" tag) builder
+    | CPrim1 (op, body, (tag, typ)) -> (
+        match op with
+        | Ref -> (
+          match body with
+          | ImmId (name, (tag, typ)) -> (
+            match lookup_function name the_module with
+            | Some _ ->
+                let fn = build_alloca (pointer_type context) (gensym "fn_ptr") builder in
+                let _ = build_store (find env name) fn builder in
+                fn
+                (* build_load (typ_to_llvm_typ context typ) fn (gensym "fn_val") builder *)
+            | _ -> find env name )
+          | _ -> ice "cannot reference non-id" )
+        | _ -> 
+          let b = compile_immexpr env body in
+          let _, b_typ = tag_of_immexpr body in
+          (prim1_to_llvm_op op b_typ) b (sprintf "cprim1_%d" tag) builder)
     | CGetReference (body, (tag, typ)) -> (
       match body with
       | ImmId (name, (tag, typ)) -> (

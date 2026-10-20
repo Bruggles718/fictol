@@ -13,6 +13,7 @@ type prim1 =
   | PrintStack
   | Neg
   | Deref
+  | Ref
 
 type prim2 =
   | Plus
