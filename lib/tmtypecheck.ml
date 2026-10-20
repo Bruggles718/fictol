@@ -284,7 +284,9 @@ let type_synth_terms (p: sourcespan program) =
       (if alpha_eq thn_typ els_typ then () else failwith "if branches must have same types");
       (thn_typ, cond_wanteds @ thn_wanteds @ els_wanteds, (TmIf(new_cond, new_thn, new_els, (loc, thn_typ))))
 
-
+  (* I think this should check if the argument is implicit or explicit.
+    Something something generate metavariables and unify? I have to think
+    more about exactly how this works. *)
   and infer_app_term (ctx) m n =
     match infer_type_term ctx m with
     | (TmPi (x, a, preds, m, call_type, loc), m_wanteds, new_m) ->

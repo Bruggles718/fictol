@@ -1,6 +1,9 @@
 open Types
 open Exprs
 
+(* I think this needs to be extended to have prims again, but not lets.
+I also need metavariables. I also think I need a way to distinguish between
+regular arguments and implicit arguments. *)
 type 'a term =
   | TmUniverse of int
   | TmPi of string * 'a term * 'a tmpredicate list * 'a term * call_type * 'a
