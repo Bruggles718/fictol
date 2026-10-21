@@ -19,8 +19,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   and loc_typ_of_bind bind =
     match bind with
     | BName (_, _, typ, loc) -> (loc, typ)
-    | BBlank loc -> (loc, TyBlank loc)
-  and wf_typ loc typ =
+    | BBlank loc -> (loc, None)
+  (* and wf_typ loc typ =
     match typ with
     | TyArrow (args, ret, _) -> List.concat (List.map (wf_typ loc) args) @ wf_typ loc ret
     | TyApp (TyCon Reference, ref_args) -> (
@@ -42,11 +42,11 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                   (List.length ref_args) ) ] )
     (* Eventually, this should check that the correct number of type args are applied to a generic ADT *)
     | TyApp (ret, args) -> List.concat (List.map (wf_typ loc) args) @ wf_typ loc ret
-    | _ -> []
+    | _ -> [] *)
   and binding_errs (scope_env, shadow_env, err_lst) x body_err =
     let adding_to_env = string_list_from_bind x in
     let loc, typ = loc_typ_of_bind x in
-    let typ_errs = wf_typ loc typ in
+    let typ_errs = if (Option.is_some typ) then wf_E (Option.get typ) scope_env else [] in
     (* try
       let dups =
         let names = adding_to_env in
@@ -59,12 +59,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     (* (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ dups @ body_err) *)
     (adding_to_env @ scope_env, adding_to_env @ shadow_env, typ_errs @ err_lst @ body_err)
   (* with Not_found -> (adding_to_env @ scope_env, adding_to_env @ shadow_env, err_lst @ body_err) *)
-  and fun_args_errs bind =
+  and fun_args_errs env bind =
     match bind with
     | BName (name, _, typ, loc) -> (
       match typ with
-      | TyBlank _ -> [NoTypeAnnotation (name, loc)]
-      | _ -> wf_typ loc typ )
+      | None -> [NoTypeAnnotation (name, loc)]
+      | _ -> if (Option.is_some typ) then wf_E (Option.get typ) env else [])
     | _ -> [NotYetImplemented "unsupported binding type"]
   and wf_E_list e_lst env =
     let results = List.map (fun e -> wf_E e env) e_lst in
@@ -102,30 +102,29 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         fun_err @ wf_E_list args env *)
         [Unsupported ("Calling closures is not yet supported", loc)]
     | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env
-    | ETyApp (e, _, _) -> wf_E e env
     | EBorrow (borrowed_expr, ref_name, region, body, loc) ->
         let body_env = (ref_name, loc) :: env in
         wf_E borrowed_expr env @ wf_E body body_env
-    | EGetReference (body, loc) -> wf_E body env
+    | EMeta (x, loc) -> []
   and wf_D d env (* other parameters may be needed here *) =
     match d with
     | DFun (fun_name, generics, args, body, ct, typ, fun_loc) ->
         let env2, _, args_err_lst =
           List.fold_left
             (fun (scope_env, shadow_env, args_err_lst) (x, loc) ->
+              let typ_err_lst = List.map (fun_args_errs scope_env) args |> List.concat in
               try
                 let existing = List.assoc x shadow_env in
                 let err = DuplicateId (x, loc, existing) in
                 ((x, loc) :: scope_env, (x, loc) :: shadow_env, args_err_lst @ [err])
-              with Not_found -> ((x, loc) :: scope_env, (x, loc) :: shadow_env, args_err_lst) )
+              with Not_found -> ((x, loc) :: scope_env, (x, loc) :: shadow_env, typ_err_lst @ args_err_lst) )
             (env, [], [])
             (List.concat (List.map string_list_from_bind args))
         in
-        let typ_err_lst = List.map fun_args_errs args |> List.concat in
-        let ret_typ_err =
-          match typ with
+        let ret_typ_err = if (Option.is_some typ) then wf_E (Option.get typ) env2 else [NoTypeAnnotation (fun_name ^ " return type", fun_loc)]
+          (* match typ with
           | TyBlank _ -> [NoTypeAnnotation (fun_name ^ " return type", fun_loc)]
-          | _ -> []
+          | _ -> [] *)
         in
         let body_errs =
           if Option.is_some body then
@@ -133,7 +132,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           else
             []
         in
-        let err_lst = args_err_lst @ typ_err_lst @ ret_typ_err @ body_errs in
+        let err_lst = args_err_lst @ ret_typ_err @ body_errs in
         err_lst
     | DClass _ | DInstance _ -> []
   (* wf for DInstance: the class exists with the right arity, the methods are
@@ -210,12 +209,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           List.map
             (fun pred ->
               try
-                let params_len, sup_loc = List.assoc pred.pred_class superclass_env in
+                let params_len, sup_loc = List.assoc pred.epred_class superclass_env in
                 if params_len = List.length params then
                   []
                 else
-                  [SuperclassArity (pred.pred_class, params_len, List.length params, loc)]
-              with Not_found -> [UnboundId (pred.pred_class, loc)] )
+                  [SuperclassArity (pred.epred_class, params_len, List.length params, loc)]
+              with Not_found -> [UnboundId (pred.epred_class, loc)] )
             superclasses
           |> List.concat
         in

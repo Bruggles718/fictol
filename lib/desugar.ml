@@ -68,7 +68,7 @@ let desugar (p : sourcespan program) : sourcespan program =
   and helpE e =
     match e with
     | ESeq (e1, e2, tag) -> ELet ([(BBlank tag, helpE e1, tag)], helpE e2, tag)
-    | EId (x, tag) -> EId (x, tag)
+    | EId (x, tag) | EMeta(x, tag) -> EId (x, tag)
     | ELiteral (n, tag) -> ELiteral (n, tag)
     | EPrim1 (op, body, tag) -> (
       match op with
@@ -95,38 +95,17 @@ let desugar (p : sourcespan program) : sourcespan program =
         ELetRec (newbinds, helpE body, tag) *)
     | EIf (cond, thn, els, tag) -> EIf (helpE cond, helpE thn, helpE els, tag)
     | EApp (name, args, tag) -> EApp (helpE name, List.map helpE args, tag)
-    | ETyApp (e, tys, tag) -> ETyApp (helpE e, tys, tag)
     | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
         ELet
           ( [ ( BName
                   ( ref_name,
                     false,
-                    TyApp
-                      ( TyCon Reference,
-                        [TyVar (gensym "T"); TyApp (TyCon Region, [TyCon (RegionName region)])] ),
+                    (Some(EApp(EId("ref", dummy_span), [EMeta((gensym "T"), dummy_span); EApp(EId("Region", dummy_span), [EId(region, dummy_span)], dummy_span)], dummy_span))),
                     tag ),
                 helpE (EPrim1 (Ref, borrowed_expr, tag)),
                 tag ) ],
             helpE body,
             tag )
-    | EGetReference (body, tag) -> EGetReference (helpE body, tag)
-    (* | ELambda (binds, body, tag) ->
-        let expandBind bind =
-          match bind with
-          | BTuple (_, btag) ->
-              let newparam = gensym "tuparg" in
-              (BName (newparam, false, btag), helpBE (bind, EId (newparam, btag), btag))
-          | _ -> (bind, [])
-        in
-        let params, newbinds = List.split (List.map expandBind binds) in
-        let newbody =
-          List.fold_right (fun binds body -> ELet (binds, body, tag)) newbinds (helpE body)
-        in
-        ELambda (params, newbody, tag) *)
-    (* | EString (s, tag) ->
-        let num_list = List.map (fun c -> ENumber (Int64.of_int (Char.code c), tag)) (explode s) in
-        let nums_linked = List.fold_right (fun n l -> ETuple ([n; l], tag)) num_list (ENil tag) in
-        helpE (EApp (EId ("String", tag), [nums_linked], Snake, tag)) *)
   in
   match p with
   | Program (decls, tag) -> Program (helpG decls, tag)

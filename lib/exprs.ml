@@ -31,7 +31,7 @@ type prim2 =
 
 and 'a bind =
   | BBlank of 'a
-  | BName of string * bool * typ * 'a
+  | BName of string * bool * 'a expr option * 'a
 (* | BTuple of 'a bind list * 'a *)
 
 and 'a binding = 'a bind * 'a expr * 'a
@@ -59,27 +59,33 @@ and 'a expr =
   | ELiteral of lit * 'a
   (* | ENil of 'a *)
   | EId of string * 'a
+  | EMeta of string * 'a
   | EApp of 'a expr * 'a expr list * 'a
   (* | ELambda of 'a bind list * 'a expr * 'a *)
   (* | ELetRec of 'a binding list * 'a expr * 'a *)
   (* | EString of string * 'a *)
-  | ETyApp of 'a expr * typ list * 'a
+  (* | ETyApp of 'a expr * 'a expr list * 'a *)
   | EBorrow of 'a expr * string * string * 'a expr * 'a
     (* expr to borrow, name to bind it as, name of region, body, tag *)
-  | EGetReference of 'a expr * 'a
+
+type 'a epredicate =
+  { epred_class: string;
+    epred_args: 'a expr list }
+
+type 'a egeneric_bind = EGBName of string * 'a epredicate list * 'a
 
 and 'a method_sig =
   { ms_name: string;
-    ms_generics: 'a generic_bind list;
+    ms_generics: 'a egeneric_bind list;
     ms_args: 'a bind list;
-    ms_ret: typ;
+    ms_ret: 'a expr option;
     ms_default: 'a expr option; (* Some body when the class gives a default *)
     ms_span: 'a }
 
 type 'a decl =
-  | DFun of string * 'a generic_bind list * 'a bind list * 'a expr option * call_type * typ * 'a
-  | DClass of string * string list * 'a predicate list * 'a method_sig list * 'a
-  | DInstance of 'a generic_bind list * 'a predicate * 'a method_impl list * 'a
+  | DFun of string * 'a egeneric_bind list * 'a bind list * 'a expr option * call_type * 'a expr option * 'a
+  | DClass of string * string list * 'a epredicate list * 'a method_sig list * 'a
+  | DInstance of 'a egeneric_bind list * 'a epredicate * 'a method_impl list * 'a
 
 and 'a method_impl =
   | ImplDecl of 'a decl (* checked + elaborated user-written DFun *)
