@@ -1,0 +1,22 @@
+(library
+ (name experimental)
+ (libraries
+  llvm
+  llvm.analysis
+  llvm.bitwriter
+  llvm.target
+  llvm.executionengine
+  stdint
+  ounit2
+  extlib)
+ (foreign_stubs
+  (language c)
+  (names fictol_stubs)
+  (flags
+   (:standard -I/usr/lib/llvm-19/include))))
+
+(ocamllex
+ (modules lexer))
+
+(ocamlyacc
+ (modules parser))

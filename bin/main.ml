@@ -1,8 +1,14 @@
-open Fictol.Runner
+(* open Fictol.Runner
 open Printf
 open Fictol.Exprs
 open Fictol.Errors
-open Fictol.Phases
+open Fictol.Phases *)
+
+open Experimental.Runner
+open Printf
+open Experimental.Exprs
+open Experimental.Errors
+open Experimental.Phases
 
 let show_trace = ref false
 
