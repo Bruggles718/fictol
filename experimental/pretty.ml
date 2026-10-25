@@ -72,6 +72,7 @@ let rec string_of_typ (t : typ) =
   | Region -> "region"
   | Bool -> "bool"
   | Char -> "char"
+  | Unit -> "unit"
   | Int w -> (
     match w with
     | I8 -> "i8"

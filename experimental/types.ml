@@ -25,6 +25,7 @@ type typ =
   | Bool
   | Char
   | Region
+  | Unit
 
 (* type 'a predicate =
   { pred_class: string;

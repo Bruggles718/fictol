@@ -9,6 +9,8 @@ open Llvm
 open Stdint
 open Fictol_stubs
 open Builtins
+open Tag
+open Desugar
 (* open Compiler_common
 open Well_formed
 open Desugar
@@ -35,6 +37,7 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   prog
   |> add_phase add_builtins_phase add_builtins
   (* |> add_err_phase well_formed is_well_formed *)
+  |> add_phase desugared (fun p ->  desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p))))
   (* |> add_phase desugared desugar *)
   (* |> add_phase desugared (fun p ->  desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p)))) *)
   (* could potentially lead to confusing traces, but ultimately prevents shadowing built in 
