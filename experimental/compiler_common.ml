@@ -91,6 +91,8 @@ exception MissingMethod of string * string * sourcespan   (* instance, method *)
 exception ExtraMethod of string * string * sourcespan
 exception CyclicSuperclass of string * sourcespan *)
 
+(* See notes in exprs.ml. Continue after making those determinations *)
+
 (* let class_table : (string, sourcespan class_info) Hashtbl.t = Hashtbl.create 8
 (* class name -> info *)
 
@@ -109,9 +111,9 @@ let typed_default_method_table : (string * string, typed_tag decl) Hashtbl.t = H
 (* Same keys, but the TYPE-CHECKED bodies (filled by check_class_defaults). This is what
    monomorphisation reads; default_method_table keeps the untyped input that
    check_class_defaults consumes. method_impl_table is also typed: it is only filled
-   by check_instance, after checking. *)
+   by check_instance, after checking. *) *)
 
-let reset_class_state () : unit =
+(* let reset_class_state () : unit =
   (* Clear all four tables. Call at the start of type_synth so repeated
    compilations in one process (tests!) don't see each other's classes. *)
   Hashtbl.clear class_table;

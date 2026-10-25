@@ -53,41 +53,7 @@ type 'a wanted =
 (* NEW. A predicate the type checker still has to justify, tagged with the
    source location that generated it ("no instance Add bool at line 7"). *)
 
-type 'a method_info =
-  { m_name: string;
-    m_generics: 'a generic_bind list;
-    (* the method's OWN type parameters and bounds (beyond the class's) *)
-    m_typ: typ;
-    (* a TyArrow that may mention the class parameters, e.g. for class Add with
-     params ["Self"]: (Self, Self) -> Self *)
-    m_has_default: bool }
-
-type 'a class_info =
-  { class_name: string;
-    class_params: string list; (* ["Self"], or ["a"; "b"] for multi-param *)
-    class_superclasses: 'a predicate list;
-    (* over class_params, e.g. class Ord has [ {Eq; [Self]} ] *)
-    class_methods: 'a method_info list;
-    class_span: 'a }
-(* Your commented-out class_info, tidied: methods are stored as
-   (generics, type) and the FULL scheme is derived on demand by
-   scheme_of_method. Only signatures live here; bodies stay in the AST (DClass)
-   and in default_method_table. *)
-
-type 'a instance_info =
-  { instance_id: string;
-    (* Unique name, e.g. "Add_i32" or "Show_Pair_1". Key into method_impl_table;
-     basis for mangled names after monomorphisation. *)
-    instance_vars: string list;
-    (* Type variables bound by the instance; these are the PATTERN variables when
-     matching a wanted predicate against instance_head. *)
-    instance_head: 'a predicate;
-    instance_context: 'a predicate list;
-    (* the `T: Show` part of `impl<T: Show> Show for Pair<T>` *)
-    instance_methods: string list;
-    (* names of the methods this instance defines itself; the rest must have
-     defaults in the class *)
-    instance_span: 'a } *)
+ *)
 
 (* let rec untagTyp t =
   match t with
