@@ -3,6 +3,7 @@ open Pretty
 open Phases
 open Exprs
 open Types
+open Terms
 open Errors
 open Lexing
 open Llvm
@@ -93,7 +94,9 @@ exception CyclicSuperclass of string * sourcespan *)
 
 (* See notes in exprs.ml. Continue after making those determinations *)
 
-(* let class_table : (string, sourcespan class_info) Hashtbl.t = Hashtbl.create 8
+type elab_term_tag = (sourcespan * (sourcespan term))
+
+let class_table : (string, sourcespan class_info) Hashtbl.t = Hashtbl.create 8
 (* class name -> info *)
 
 let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl.create 8
@@ -101,19 +104,19 @@ let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl
 (* class name -> all instances of that class. This replaces your commented-out
    `classes` / `instances`. Concrete `sourcespan` instead of `'a` avoids weak
    type variables on a top-level Hashtbl. *)
-let method_impl_table : (string * string, typed_tag method_impl) Hashtbl.t = Hashtbl.create 32
+let method_impl_table : (string * string, elab_term_tag method_impl) Hashtbl.t = Hashtbl.create 32
 (* (instance_id, method name) -> implementation *)
 
-let default_method_table : (string * string, sourcespan decl) Hashtbl.t = Hashtbl.create 16
+let default_method_table : (string * string, sourcespan term) Hashtbl.t = Hashtbl.create 16
 (* (class name, method name) -> default body, stored as a DFun *)
 
-let typed_default_method_table : (string * string, typed_tag decl) Hashtbl.t = Hashtbl.create 16
+let typed_default_method_table : (string * string, elab_term_tag term) Hashtbl.t = Hashtbl.create 16
 (* Same keys, but the TYPE-CHECKED bodies (filled by check_class_defaults). This is what
    monomorphisation reads; default_method_table keeps the untyped input that
    check_class_defaults consumes. method_impl_table is also typed: it is only filled
-   by check_instance, after checking. *) *)
+   by check_instance, after checking. *)
 
-(* let reset_class_state () : unit =
+let reset_class_state () : unit =
   (* Clear all four tables. Call at the start of type_synth so repeated
    compilations in one process (tests!) don't see each other's classes. *)
   Hashtbl.clear class_table;
@@ -121,7 +124,7 @@ let typed_default_method_table : (string * string, typed_tag decl) Hashtbl.t = H
   Hashtbl.clear method_impl_table;
   Hashtbl.clear default_method_table;
   Hashtbl.clear typed_default_method_table
-;; *)
+;;
 
 (* REAL (needed by is_well_formed / infer_prog so they stay exhaustive). *)
 let partition_decls (ds : 'a decl list) : 'a decl list * 'a decl list * 'a decl list =
