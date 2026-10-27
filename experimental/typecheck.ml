@@ -147,12 +147,12 @@ let rec eval tm =
     TmLiteral(LitBool(lhs = rhs), tag)
   | TmPrim2 (op, TmLiteral(LitInt(n1, suff1), _), TmLiteral(LitInt(n2, suff2), _), tag) when suff1 = suff2 ->
     TmLiteral(prim2_int_op op n1 n2 suff1, tag)
-  | TmPrim2 (op, lhs, rhs, tag) -> reduce (TmPrim2(op, reduce lhs, reduce rhs, tag))
+  | TmPrim2 (op, lhs, rhs, tag) -> (TmPrim2(op, reduce lhs, reduce rhs, tag))
   | TmPrim1 (Neg, TmLiteral(LitInt(n, suff), _), tag) ->
     TmLiteral(LitInt(Uint64.neg n, suff), tag)
   | TmPrim1 (Not, TmLiteral(LitBool(b), _), tag) ->
     TmLiteral(LitBool(not b), tag)
-  | TmPrim1 (op, body, tag) -> reduce (TmPrim1(op, reduce body, tag) )
+  | TmPrim1 (op, body, tag) -> (TmPrim1(op, reduce body, tag) )
   | TmLiteral _ | TmVar _ | TmUniverse _ | TmMeta _ | TmPrimTy _ -> tm
 
 and eval_app m n app_boundary tag =
