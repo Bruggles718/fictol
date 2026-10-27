@@ -72,7 +72,7 @@ let rec subst_metas_in_term x m tm =
   match tm with
   | TmMeta (y, tag) when x = y -> m
   | TmApp (m', n, tag) -> TmApp(subst_metas_in_term x m m', subst_metas_in_term x m n, tag)
-  | TmLet (y, a, n, tag) -> TmLet (y, subst x m a, n, tag)
+  | TmLet (y, a, n, tag) -> TmLet (y, subst_metas_in_term x m a, n, tag)
   | TmLambda (y, a, n, call_type, tag) -> TmLambda (y, subst_metas_in_term x m a, subst_metas_in_term x m n, call_type, tag)
   | TmPi (y, a, n, call_type, tag) -> TmPi (y, subst_metas_in_term x m a, subst_metas_in_term x m n, call_type, tag)
   | TmIf (cond, thn, els, tag) -> TmIf (subst_metas_in_term x m cond, subst_metas_in_term x m thn, subst_metas_in_term x m els, tag)
