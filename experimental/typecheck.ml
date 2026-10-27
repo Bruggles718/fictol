@@ -168,10 +168,7 @@ let rec whnf tm =
       let rhs' = whnf rhs in
       begin match (lhs', rhs') with
       | TmLiteral (l, _), TmLiteral (r, _) ->
-        begin match equal_literals l r with
-        | Some result -> TmLiteral (LitBool result, tag)
-        | None -> TmPrim2 (Eq, lhs', rhs', tag)
-        end
+        TmLiteral (LitBool (l = r), tag)
       | _ -> TmPrim2 (Eq, lhs', rhs', tag)
       end
   (* Integer operations must expose their operands before computing. *)
@@ -242,6 +239,3 @@ and normalize_if_reduced tm =
   else
     normalize tm'
 ;;
-
-let conv lhs rhs =
-  alpha_eq (normalize lhs) (normalize rhs)
