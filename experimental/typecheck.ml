@@ -243,51 +243,5 @@ and normalize_if_reduced tm =
     normalize tm'
 ;;
 
-type alpha_env = (string * string) list
-
-let alpha_var_equal env left_name right_name =
-  match List.assoc_opt left_name env with
-  | Some expected_right_name -> expected_right_name = right_name
-  | None ->
-      let right_name_is_bound =
-        List.exists (fun (_, bound_right_name) -> bound_right_name = right_name) env
-      in
-      (not right_name_is_bound) && left_name = right_name
-;;
-
 let conv lhs rhs =
-  let rec go env lhs rhs =
-    let lhs = whnf lhs in
-    let rhs = whnf rhs in
-    match (lhs, rhs) with
-    | TmVar (x, _), TmVar (y, _) -> alpha_var_equal env x y
-    | TmLiteral (l, _), TmLiteral (r, _) -> l = r
-    | TmUniverse l, TmUniverse r -> l = r
-    | TmPrimTy (l, _), TmPrimTy (r, _) -> l = r
-    (* Unsolved metas are rigid here. A unifier should handle solving
-       ?m := rhs before or around conversion checking. *)
-    | TmMeta (l, _), TmMeta (r, _) -> l = r
-    | ( TmLambda (left_x, left_param_ty, left_body, left_call_type, _),
-        TmLambda (right_x, right_param_ty, right_body, right_call_type, _) ) ->
-        left_call_type = right_call_type
-        && go env left_param_ty right_param_ty
-        && go ((left_x, right_x) :: env) left_body right_body
-    | ( TmPi (left_x, left_domain, left_codomain, left_call_type, _),
-        TmPi (right_x, right_domain, right_codomain, right_call_type, _) ) ->
-        left_call_type = right_call_type
-        && go env left_domain right_domain
-        && go ((left_x, right_x) :: env) left_codomain right_codomain
-    | TmApp (left_fn, left_arg, left_boundary, _), TmApp (right_fn, right_arg, right_boundary, _) ->
-        left_boundary = right_boundary && go env left_fn right_fn && go env left_arg right_arg
-    | TmIf (left_cond, left_thn, left_els, _), TmIf (right_cond, right_thn, right_els, _) ->
-        go env left_cond right_cond && go env left_thn right_thn && go env left_els right_els
-    | TmPrim1 (left_op, left_body, _), TmPrim1 (right_op, right_body, _) ->
-        left_op = right_op && go env left_body right_body
-    | TmPrim2 (left_op, left_lhs, left_rhs, _), TmPrim2 (right_op, right_lhs, right_rhs, _) ->
-        left_op = right_op && go env left_lhs right_lhs && go env left_rhs right_rhs
-    (* Normally unreachable because whnf eliminates lets. *)
-    | TmLet _, _ | _, TmLet _ -> go env (whnf lhs) (whnf rhs)
-    | _ -> false
-  in
-  go [] lhs rhs
-;;
+  alpha_eq (normalize lhs) (normalize rhs)
