@@ -39,36 +39,36 @@ let rec freshen (banlist : string list) (base : string) =
     base
 ;;
 
-let rec subst x m tm =
+let rec subst_vars_in_term x m tm =
   match tm with
   | TmVar (y, tag) when x = y -> m
-  | TmApp (m', n, app_boundary, tag) -> TmApp (subst x m m', subst x m n, app_boundary, tag)
-  | TmLet (y, a, n, tag) when x = y -> TmLet (y, subst x m a, n, tag)
+  | TmApp (m', n, app_boundary, tag) -> TmApp (subst_vars_in_term x m m', subst_vars_in_term x m n, app_boundary, tag)
+  | TmLet (y, a, n, tag) when x = y -> TmLet (y, subst_vars_in_term x m a, n, tag)
   | TmLet (y, a, n, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
-      subst x m (rename (freshen banlist y) tm)
-  | TmLet (y, a, n, tag) -> TmLet (y, subst x m a, n, tag)
-  | TmLambda (y, a, n, call_type, tag) when x = y -> TmLambda (y, subst x m a, n, call_type, tag)
+      subst_vars_in_term x m (rename (freshen banlist y) tm)
+  | TmLet (y, a, n, tag) -> TmLet (y, subst_vars_in_term x m a, n, tag)
+  | TmLambda (y, a, n, call_type, tag) when x = y -> TmLambda (y, subst_vars_in_term x m a, n, call_type, tag)
   | TmLambda (y, a, n, call_type, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
-      subst x m (rename (freshen banlist y) tm)
-  | TmLambda (y, a, n, call_type, tag) -> TmLambda (y, subst x m a, subst x m n, call_type, tag)
-  | TmPi (y, a, n, call_type, tag) when x = y -> TmPi (y, subst x m a, n, call_type, tag)
+      subst_vars_in_term x m (rename (freshen banlist y) tm)
+  | TmLambda (y, a, n, call_type, tag) -> TmLambda (y, subst_vars_in_term x m a, subst_vars_in_term x m n, call_type, tag)
+  | TmPi (y, a, n, call_type, tag) when x = y -> TmPi (y, subst_vars_in_term x m a, n, call_type, tag)
   | TmPi (y, a, n, call_type, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
-      subst x m (rename (freshen banlist y) tm)
-  | TmPi (y, a, n, call_type, tag) -> TmPi (y, subst x m a, subst x m n, call_type, tag)
-  | TmIf (cond, thn, els, tag) -> TmIf (subst x m cond, subst x m thn, subst x m els, tag)
-  | TmPrim1 (op, body, tag) -> TmPrim1 (op, subst x m body, tag)
-  | TmPrim2 (op, lhs, rhs, tag) -> TmPrim2 (op, subst x m lhs, subst x m rhs, tag)
+      subst_vars_in_term x m (rename (freshen banlist y) tm)
+  | TmPi (y, a, n, call_type, tag) -> TmPi (y, subst_vars_in_term x m a, subst_vars_in_term x m n, call_type, tag)
+  | TmIf (cond, thn, els, tag) -> TmIf (subst_vars_in_term x m cond, subst_vars_in_term x m thn, subst_vars_in_term x m els, tag)
+  | TmPrim1 (op, body, tag) -> TmPrim1 (op, subst_vars_in_term x m body, tag)
+  | TmPrim2 (op, lhs, rhs, tag) -> TmPrim2 (op, subst_vars_in_term x m lhs, subst_vars_in_term x m rhs, tag)
   | TmLiteral _ | TmVar _ | TmUniverse _ | TmPrimTy _ | TmMeta _ -> tm
 
 and rename x' binder =
   match binder with
   | TmLambda (x, a, m, call_type, tag) ->
-      TmLambda (x', a, subst x (TmVar (x', tag)) m, call_type, tag)
-  | TmPi (x, a, m, call_type, tag) -> TmPi (x', a, subst x (TmVar (x', tag)) m, call_type, tag)
-  | TmLet (x, a, m, tag) -> TmLet (x', a, subst x (TmVar (x', tag)) m, tag)
+      TmLambda (x', a, subst_vars_in_term x (TmVar (x', tag)) m, call_type, tag)
+  | TmPi (x, a, m, call_type, tag) -> TmPi (x', a, subst_vars_in_term x (TmVar (x', tag)) m, call_type, tag)
+  | TmLet (x, a, m, tag) -> TmLet (x', a, subst_vars_in_term x (TmVar (x', tag)) m, tag)
   | _ -> raise (InternalCompilerError "rename term failure: Given non binder")
 ;;
 
@@ -145,13 +145,13 @@ let prim2_int_op op l r suff =
 let rec whnf tm =
   match tm with
   (* Zeta reduction. *)
-  | TmLet (x, value, body, _) -> whnf (subst x value body)
+  | TmLet (x, value, body, _) -> whnf (subst_vars_in_term x value body)
   (* Reduce the function position, but not the argument. *)
   | TmApp (fn, arg, app_boundary, tag) ->
       let fn' = whnf fn in
       begin match fn' with
       (* Beta reduction. Notice that [arg] is not reduced first. *)
-      | TmLambda (x, _, body, _, _) -> whnf (subst x arg body)
+      | TmLambda (x, _, body, _, _) -> whnf (subst_vars_in_term x arg body)
       | _ -> TmApp (fn', arg, app_boundary, tag)
       end
   (* Reduce only the condition. *)
@@ -201,6 +201,7 @@ let rec whnf tm =
   | TmLiteral _ | TmVar _ | TmUniverse _ | TmMeta _ | TmPrimTy _ -> tm
 ;;
 
+(* Update this to return info for determining Resolved or Stuck. Maybe WHNF needs updating too? *)
 let rec normalize tm =
   match whnf tm with
   | TmLambda (x, param_ty, body, call_type, tag) ->
@@ -229,7 +230,7 @@ let rec normalize tm =
       normalize_if_reduced result
   (* WHNF should always eliminate lets, but handling one here makes the
      function robust if whnf's behavior later changes. *)
-  | TmLet (x, value, body, _) -> normalize (subst x value body)
+  | TmLet (x, value, body, _) -> normalize (subst_vars_in_term x value body)
   | (TmLiteral _ | TmVar _ | TmUniverse _ | TmMeta _ | TmPrimTy _) as tm -> tm
 
 and normalize_if_reduced tm =
@@ -239,3 +240,20 @@ and normalize_if_reduced tm =
   else
     normalize tm'
 ;;
+
+type typed_tag = (sourcespan * (sourcespan term))
+
+(* for tracking postponed unification *)
+type 'a residual =
+    {
+        (* terms to unify *)
+        r_constraint: ('a term * 'a term);
+        (* metas required before further reduction *)
+        r_blockers: (string list)
+    }
+
+let type_synth_terms (p: sourcespan program) = failwith "TODO"
+    (* IDEA: getting the Pi type of a function should remove the implicit arguments and subst them with fresh meta variables *)
+
+    (* let rec infer_term_elab (env : sourcespan term envt) (e : sourcespan term) :
+      sourcespan term subst * sourcespan term * sourcespan term list * (typed_tag) term = *)

@@ -57,3 +57,5 @@ type 'a instance_info =
     (* names of the methods this instance defines itself; the rest must have
      defaults in the class *)
     instance_span: 'a }
+
+type 'a subst = (string * 'a) list
