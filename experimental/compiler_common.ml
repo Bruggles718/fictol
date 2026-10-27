@@ -104,7 +104,7 @@ let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl
 (* class name -> all instances of that class. This replaces your commented-out
    `classes` / `instances`. Concrete `sourcespan` instead of `'a` avoids weak
    type variables on a top-level Hashtbl. *)
-let method_impl_table : (string * string, elab_term_tag method_impl) Hashtbl.t = Hashtbl.create 32
+let method_impl_table : (string * string, elab_term_tag term_method_impl) Hashtbl.t = Hashtbl.create 32
 (* (instance_id, method name) -> implementation *)
 
 let default_method_table : (string * string, sourcespan term) Hashtbl.t = Hashtbl.create 16

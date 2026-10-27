@@ -13,6 +13,12 @@ type 'a term =
   | TmLiteral of lit * 'a
   | TmPrimTy of typ * 'a
   | TmVar of string * 'a
+  | TmMeta of string * 'a
+
+and 'a term_method_impl =
+  | TImplDecl of 'a term
+  | TImplPrim1 of prim1 (* built-in instance: emit this primitive *)
+  | TImplPrim2 of prim2
 
 type 'a method_info =
   { m_name: string;
