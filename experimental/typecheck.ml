@@ -253,9 +253,11 @@ type 'a residual =
     }
 
 let type_synth_terms (p: sourcespan program) = failwith "TODO"
-    (* IDEA: getting the Pi type of a function should remove the implicit arguments and subst them with fresh meta variables *)
-    (* IDEA: elaboration should lower methods whose impl is a prim. Also, I think change prim methods
-            to not be callable by name. Prevent writing "add(5, 7)" directly. Perhaps losing some
-            ergonomics in some cases, but makes this system much stronger and easier to reason about.*)
+    (* IDEA: 
+        getting the Pi type of a function should remove the implicit arguments and subst them with fresh meta variables *)
+    (* IDEA: 
+        elaboration should lower methods whose impl is a prim. Also, I think change prim methods
+        to not be callable by name. Prevent writing "add(5, 7)" directly. Perhaps losing some
+        ergonomics in some cases, but makes this system much stronger and easier to reason about.*)
     (* let rec infer_term_elab (env : sourcespan term envt) (e : sourcespan term) :
       sourcespan term subst * sourcespan term * sourcespan term list * (typed_tag) term = *)
