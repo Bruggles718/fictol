@@ -48,16 +48,16 @@ let rec subst_vars_in_term x m tm =
       let banlist = tm_free_vars m @ all_vars n in
       subst_vars_in_term x m (rename (freshen banlist y) tm)
   | TmLet (y, a, n, tag) -> TmLet (y, subst_vars_in_term x m a, n, tag)
-  | TmLambda (y, a, n, call_type, tag) when x = y -> TmLambda (y, subst_vars_in_term x m a, n, call_type, tag)
-  | TmLambda (y, a, n, call_type, tag) when List.mem y (tm_free_vars m) ->
+  | TmLambda (y, a, n, binder_info, tag) when x = y -> TmLambda (y, subst_vars_in_term x m a, n, binder_info, tag)
+  | TmLambda (y, a, n, binder_info, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
       subst_vars_in_term x m (rename (freshen banlist y) tm)
-  | TmLambda (y, a, n, call_type, tag) -> TmLambda (y, subst_vars_in_term x m a, subst_vars_in_term x m n, call_type, tag)
-  | TmPi (y, a, n, call_type, tag) when x = y -> TmPi (y, subst_vars_in_term x m a, n, call_type, tag)
-  | TmPi (y, a, n, call_type, tag) when List.mem y (tm_free_vars m) ->
+  | TmLambda (y, a, n, binder_info, tag) -> TmLambda (y, subst_vars_in_term x m a, subst_vars_in_term x m n, binder_info, tag)
+  | TmPi (y, a, n, binder_info, tag) when x = y -> TmPi (y, subst_vars_in_term x m a, n, binder_info, tag)
+  | TmPi (y, a, n, binder_info, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
       subst_vars_in_term x m (rename (freshen banlist y) tm)
-  | TmPi (y, a, n, call_type, tag) -> TmPi (y, subst_vars_in_term x m a, subst_vars_in_term x m n, call_type, tag)
+  | TmPi (y, a, n, binder_info, tag) -> TmPi (y, subst_vars_in_term x m a, subst_vars_in_term x m n, binder_info, tag)
   | TmIf (cond, thn, els, tag) -> TmIf (subst_vars_in_term x m cond, subst_vars_in_term x m thn, subst_vars_in_term x m els, tag)
   | TmPrim1 (op, body, tag) -> TmPrim1 (op, subst_vars_in_term x m body, tag)
   | TmPrim2 (op, lhs, rhs, tag) -> TmPrim2 (op, subst_vars_in_term x m lhs, subst_vars_in_term x m rhs, tag)
@@ -65,9 +65,9 @@ let rec subst_vars_in_term x m tm =
 
 and rename x' binder =
   match binder with
-  | TmLambda (x, a, m, call_type, tag) ->
-      TmLambda (x', a, subst_vars_in_term x (TmVar (x', tag)) m, call_type, tag)
-  | TmPi (x, a, m, call_type, tag) -> TmPi (x', a, subst_vars_in_term x (TmVar (x', tag)) m, call_type, tag)
+  | TmLambda (x, a, m, binder_info, tag) ->
+      TmLambda (x', a, subst_vars_in_term x (TmVar (x', tag)) m, binder_info, tag)
+  | TmPi (x, a, m, binder_info, tag) -> TmPi (x', a, subst_vars_in_term x (TmVar (x', tag)) m, binder_info, tag)
   | TmLet (x, a, m, tag) -> TmLet (x', a, subst_vars_in_term x (TmVar (x', tag)) m, tag)
   | _ -> raise (InternalCompilerError "rename term failure: Given non binder")
 ;;
@@ -78,10 +78,10 @@ let rec subst_metas_in_term x m tm =
   | TmApp (m', n, app_boundary, tag) ->
       TmApp (subst_metas_in_term x m m', subst_metas_in_term x m n, app_boundary, tag)
   | TmLet (y, a, n, tag) -> TmLet (y, subst_metas_in_term x m a, n, tag)
-  | TmLambda (y, a, n, call_type, tag) ->
-      TmLambda (y, subst_metas_in_term x m a, subst_metas_in_term x m n, call_type, tag)
-  | TmPi (y, a, n, call_type, tag) ->
-      TmPi (y, subst_metas_in_term x m a, subst_metas_in_term x m n, call_type, tag)
+  | TmLambda (y, a, n, binder_info, tag) ->
+      TmLambda (y, subst_metas_in_term x m a, subst_metas_in_term x m n, binder_info, tag)
+  | TmPi (y, a, n, binder_info, tag) ->
+      TmPi (y, subst_metas_in_term x m a, subst_metas_in_term x m n, binder_info, tag)
   | TmIf (cond, thn, els, tag) ->
       TmIf
         (subst_metas_in_term x m cond, subst_metas_in_term x m thn, subst_metas_in_term x m els, tag)
@@ -97,10 +97,10 @@ let rec alpha_eq tm1 tm2 =
   | TmApp (a1, b1, app_boundary1, _), TmApp (a2, b2, app_boundary2, _) ->
       app_boundary1 = app_boundary2 && alpha_eq a1 a2 && alpha_eq b1 b2
   | TmLet (x1, a1, m1, _), TmLet (x2, a2, m2, _) when x1 = x2 -> alpha_eq a1 a2 && alpha_eq m1 m2
-  | TmLambda (x1, a1, m1, call_type1, _), TmLambda (x2, a2, m2, call_type2, _) when x1 = x2 ->
-      call_type1 = call_type2 && alpha_eq a1 a2 && alpha_eq m1 m2
-  | TmPi (x1, a1, m1, call_type1, _), TmPi (x2, a2, m2, call_type2, _) when x1 = x2 ->
-      call_type1 = call_type2 && alpha_eq a1 a2 && alpha_eq m1 m2
+  | TmLambda (x1, a1, m1, binder_info1, _), TmLambda (x2, a2, m2, binder_info2, _) when x1 = x2 ->
+      binder_info1 = binder_info2 && alpha_eq a1 a2 && alpha_eq m1 m2
+  | TmPi (x1, a1, m1, binder_info1, _), TmPi (x2, a2, m2, binder_info2, _) when x1 = x2 ->
+      binder_info1 = binder_info2 && alpha_eq a1 a2 && alpha_eq m1 m2
   | TmLet (x1, a1, m1, _), TmLet (x2, a2, m2, _) ->
       let banlist = all_vars m1 @ all_vars m2 in
       let fresh_x = freshen banlist x1 in
@@ -204,10 +204,10 @@ let rec whnf tm =
 (* Update this to return info for determining Resolved or Stuck. Maybe WHNF needs updating too? *)
 let rec normalize tm =
   match whnf tm with
-  | TmLambda (x, param_ty, body, call_type, tag) ->
-      TmLambda (x, normalize param_ty, normalize body, call_type, tag)
-  | TmPi (x, domain, codomain, call_type, tag) ->
-      TmPi (x, normalize domain, normalize codomain, call_type, tag)
+  | TmLambda (x, param_ty, body, binder_info, tag) ->
+      TmLambda (x, normalize param_ty, normalize body, binder_info, tag)
+  | TmPi (x, domain, codomain, binder_info, tag) ->
+      TmPi (x, normalize domain, normalize codomain, binder_info, tag)
   | TmApp (fn, arg, app_boundary, tag) ->
       let fn' = normalize fn in
       let arg' = normalize arg in

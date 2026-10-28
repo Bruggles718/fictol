@@ -5,10 +5,17 @@ type app_boundary =
   | Continue
   | End
 
+
+type binder_info =
+  {
+    bi_call_type: call_type;
+    bi_piinfo: piinfo;
+  }
+
 type 'a term =
   | TmUniverse of int
-  | TmPi of string * 'a term * 'a term * call_type * 'a
-  | TmLambda of string * 'a term * 'a term * call_type * 'a
+  | TmPi of string * 'a term * 'a term * binder_info * 'a
+  | TmLambda of string * 'a term * 'a term * binder_info * 'a
   | TmLet of string * 'a term * 'a term * 'a
   | TmApp of 'a term * 'a term * app_boundary * 'a
   | TmPrim1 of prim1 * 'a term * 'a
