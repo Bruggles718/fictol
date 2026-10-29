@@ -262,5 +262,10 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
     (* IDEA:
         Consider adding a "context" to a TmMeta. Need to avoid locals escaping their scope in types.
         Think about what this representation should be. *)
+    (* IDEA:
+        Make a TmBorrow, and when doing type inference on the body, add (Reg: Region) to the env.
+        For TmIf, when checking the true branch, add (p: So(cond)) to the env.
+        This way, extra values can be available for type inference without any extra syntactic sugar
+        or runtime erasure. It all just happens during the type inference. I'm a genius btw. *)
     (* let rec infer_term_elab (env : sourcespan term envt) (e : sourcespan term) :
       sourcespan term subst * sourcespan term * sourcespan term list * (typed_tag) term = *)
