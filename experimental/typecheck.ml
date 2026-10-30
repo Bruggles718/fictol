@@ -74,7 +74,7 @@ and rename x' binder =
 
 let rec subst_metas_in_term x m tm =
   match tm with
-  | TmMeta (y, tag) when x = y -> m
+  | TmMeta (y, env, tag) when x = y -> m
   | TmApp (m', n, app_boundary, tag) ->
       TmApp (subst_metas_in_term x m m', subst_metas_in_term x m n, app_boundary, tag)
   | TmLet (y, a, n, tag) -> TmLet (y, subst_metas_in_term x m a, n, tag)
@@ -116,13 +116,51 @@ let rec alpha_eq tm1 tm2 =
   | TmIf (cond1, thn1, els1, _), TmIf (cond2, thn2, els2, _) ->
       alpha_eq cond1 cond2 && alpha_eq thn1 thn2 && alpha_eq els1 els2
   | TmLiteral (l1, _), TmLiteral (l2, _) -> l1 = l2
-  | TmUniverse lvl1, TmUniverse lvl2 -> lvl1 = lvl2
+  | TmUniverse (lvl1, _), TmUniverse (lvl2, _) -> lvl1 = lvl2
   | TmPrimTy (typ1, _), TmPrimTy (typ2, _) -> typ1 = typ2
   | TmPrim1 (op1, body1, _), TmPrim1 (op2, body2, _) -> op1 = op2 && alpha_eq body1 body2
   | TmPrim2 (op1, lhs1, rhs1, _), TmPrim2 (op2, lhs2, rhs2, _) ->
       op1 = op2 && alpha_eq lhs1 lhs2 && alpha_eq rhs1 rhs2
   | _, _ -> false
 ;;
+
+type 'a normalize_result = {
+  term : 'a term;
+  stuck_metas : StringSet.t;
+}
+
+let empty_result term = {
+  term;
+  stuck_metas = StringSet.empty;
+}
+
+let merge_results term results = {
+  term;
+  stuck_metas =
+    List.fold_left
+      (fun acc result -> StringSet.union acc result.stuck_metas)
+      StringSet.empty
+      results;
+}
+
+let rec collect_metas tm =
+  match tm with
+  | TmMeta (id, env, _) -> StringSet.singleton id
+  | TmLambda (_, ty, body, _, _)
+  | TmPi (_, ty, body, _, _) ->
+      StringSet.union (collect_metas ty) (collect_metas body)
+  | TmApp (fn, arg, _, _) ->
+      StringSet.union (collect_metas fn) (collect_metas arg)
+  | TmLet (_, value, body, _) ->
+      StringSet.union (collect_metas value) (collect_metas body)
+  | TmIf (cond, thn, els, _) ->
+      StringSet.union (collect_metas cond)
+        (StringSet.union (collect_metas thn) (collect_metas els))
+  | TmPrim1 (_, body, _) ->
+      collect_metas body
+  | TmPrim2 (_, lhs, rhs, _) ->
+      StringSet.union (collect_metas lhs) (collect_metas rhs)
+  | _ -> StringSet.empty
 
 let prim2_int_op op l r suff =
   let cmp = Uint64.compare l r in
@@ -144,101 +182,215 @@ let prim2_int_op op l r suff =
 
 let rec whnf tm =
   match tm with
-  (* Zeta reduction. *)
-  | TmLet (x, value, body, _) -> whnf (subst_vars_in_term x value body)
-  (* Reduce the function position, but not the argument. *)
+  | TmLet (x, value, body, _) ->
+      whnf (subst_vars_in_term x value body)
+
   | TmApp (fn, arg, app_boundary, tag) ->
-      let fn' = whnf fn in
+      let fn_result = whnf fn in
+      let fn' = fn_result.term in
       begin match fn' with
-      (* Beta reduction. Notice that [arg] is not reduced first. *)
-      | TmLambda (x, _, body, _, _) -> whnf (subst_vars_in_term x arg body)
-      | _ -> TmApp (fn', arg, app_boundary, tag)
+      | TmLambda (x, _, body, _, _) ->
+          let result = whnf (subst_vars_in_term x arg body) in
+          {
+            result with
+            stuck_metas =
+              StringSet.union fn_result.stuck_metas result.stuck_metas
+          }
+      | TmMeta _ ->
+          {
+            term = TmApp (fn', arg, app_boundary, tag);
+            stuck_metas =
+              StringSet.union fn_result.stuck_metas (collect_metas fn')
+          }
+      | _ ->
+          {
+            term = TmApp (fn', arg, app_boundary, tag);
+            stuck_metas = fn_result.stuck_metas
+          }
       end
-  (* Reduce only the condition. *)
+
   | TmIf (cond, thn, els, tag) ->
-      let cond' = whnf cond in
-      begin match cond' with
-      | TmLiteral (LitBool true, _) -> whnf thn
-      | TmLiteral (LitBool false, _) -> whnf els
-      | _ -> TmIf (cond', thn, els, tag)
+      let cond_result = whnf cond in
+      begin match cond_result.term with
+      | TmLiteral (LitBool true, _) ->
+          let result = whnf thn in
+          {
+            result with
+            stuck_metas =
+              StringSet.union cond_result.stuck_metas result.stuck_metas
+          }
+      | TmLiteral (LitBool false, _) ->
+          let result = whnf els in
+          {
+            result with
+            stuck_metas =
+              StringSet.union cond_result.stuck_metas result.stuck_metas
+          }
+      | TmMeta _ ->
+          {
+            term = TmIf (cond_result.term, thn, els, tag);
+            stuck_metas =
+              StringSet.union cond_result.stuck_metas
+                (collect_metas cond_result.term)
+          }
+      | _ ->
+          {
+            term = TmIf (cond_result.term, thn, els, tag);
+            stuck_metas = cond_result.stuck_metas
+          }
       end
-  (* Equality computes only when both operands become literals. *)
+
   | TmPrim2 (Eq, lhs, rhs, tag) ->
-      let lhs' = whnf lhs in
-      let rhs' = whnf rhs in
-      begin match (lhs', rhs') with
+      let lhs_result = whnf lhs in
+      let rhs_result = whnf rhs in
+      begin match lhs_result.term, rhs_result.term with
       | TmLiteral (l, _), TmLiteral (r, _) ->
-        TmLiteral (LitBool (l = r), tag)
-      | _ -> TmPrim2 (Eq, lhs', rhs', tag)
+          merge_results
+            (TmLiteral (LitBool (l = r), tag))
+            [lhs_result; rhs_result]
+      | _ ->
+          let blocked =
+            StringSet.union lhs_result.stuck_metas rhs_result.stuck_metas
+          in
+          let blocked =
+            match lhs_result.term, rhs_result.term with
+            | TmMeta _, _ -> StringSet.union blocked (collect_metas lhs_result.term)
+            | _, TmMeta _ -> StringSet.union blocked (collect_metas rhs_result.term)
+            | _ -> blocked
+          in
+          {
+            term = TmPrim2 (Eq, lhs_result.term, rhs_result.term, tag);
+            stuck_metas = blocked
+          }
       end
-  (* Integer operations must expose their operands before computing. *)
+
   | TmPrim2 (op, lhs, rhs, tag) ->
-      let lhs' = whnf lhs in
-      let rhs' = whnf rhs in
-      begin match (lhs', rhs') with
-      | TmLiteral (LitInt (n1, suff1), _), TmLiteral (LitInt (n2, suff2), _) when suff1 = suff2 ->
-          TmLiteral (prim2_int_op op n1 n2 suff1, tag)
-      | _ -> TmPrim2 (op, lhs', rhs', tag)
+      let lhs_result = whnf lhs in
+      let rhs_result = whnf rhs in
+      begin match lhs_result.term, rhs_result.term with
+      | TmLiteral (LitInt (n1, suff1), _),
+        TmLiteral (LitInt (n2, suff2), _) when suff1 = suff2 ->
+          merge_results
+            (TmLiteral (prim2_int_op op n1 n2 suff1, tag))
+            [lhs_result; rhs_result]
+      | lhs', rhs' ->
+          let blocked =
+            StringSet.union lhs_result.stuck_metas rhs_result.stuck_metas
+          in
+          let blocked =
+            match lhs', rhs' with
+            | TmMeta _, _ -> StringSet.union blocked (collect_metas lhs')
+            | _, TmMeta _ -> StringSet.union blocked (collect_metas rhs')
+            | _ -> blocked
+          in
+          {
+            term = TmPrim2 (op, lhs', rhs', tag);
+            stuck_metas = blocked
+          }
       end
+
   | TmPrim1 (Neg, body, tag) ->
-      let body' = whnf body in
-      begin match body' with
-      | TmLiteral (LitInt (n, suff), _) -> TmLiteral (LitInt (Uint64.neg n, suff), tag)
-      | _ -> TmPrim1 (Neg, body', tag)
+      let result = whnf body in
+      begin match result.term with
+      | TmLiteral (LitInt (n, suff), _) ->
+          { result with term = TmLiteral (LitInt (Uint64.neg n, suff), tag) }
+      | TmMeta _ ->
+          {
+            term = TmPrim1 (Neg, result.term, tag);
+            stuck_metas =
+              StringSet.union result.stuck_metas (collect_metas result.term)
+          }
+      | _ ->
+          { result with term = TmPrim1 (Neg, result.term, tag) }
       end
+
   | TmPrim1 (Not, body, tag) ->
-      let body' = whnf body in
-      begin match body' with
-      | TmLiteral (LitBool b, _) -> TmLiteral (LitBool (not b), tag)
-      | _ -> TmPrim1 (Not, body', tag)
+      let result = whnf body in
+      begin match result.term with
+      | TmLiteral (LitBool b, _) ->
+          { result with term = TmLiteral (LitBool (not b), tag) }
+      | TmMeta _ ->
+          {
+            term = TmPrim1 (Not, result.term, tag);
+            stuck_metas =
+              StringSet.union result.stuck_metas (collect_metas result.term)
+          }
+      | _ ->
+          { result with term = TmPrim1 (Not, result.term, tag) }
       end
-  | TmPrim1 (op, body, tag) -> TmPrim1 (op, whnf body, tag)
-  (* A lambda is already in WHNF. *)
-  | TmLambda _ -> tm
-  (* A Pi type is already in WHNF. *)
-  | TmPi _ -> tm
-  (* Neutral and atomic terms are already in WHNF. *)
-  | TmLiteral _ | TmVar _ | TmUniverse _ | TmMeta _ | TmPrimTy _ -> tm
-;;
+
+  | TmPrim1 (op, body, tag) ->
+      let result = whnf body in
+      { result with term = TmPrim1 (op, result.term, tag) }
+
+  | TmLambda _ | TmPi _
+  | TmLiteral _ | TmVar _ | TmUniverse _
+  | TmMeta _ | TmPrimTy _ ->
+      empty_result tm
 
 (* Update this to return info for determining Resolved or Stuck. Maybe WHNF needs updating too? *)
 let rec normalize tm =
-  match whnf tm with
+  let head = whnf tm in
+  let tm = head.term in
+  match tm with
   | TmLambda (x, param_ty, body, binder_info, tag) ->
-      TmLambda (x, normalize param_ty, normalize body, binder_info, tag)
+      let ty = normalize param_ty in
+      let body = normalize body in
+      merge_results
+        (TmLambda (x, ty.term, body.term, binder_info, tag))
+        [head; ty; body]
   | TmPi (x, domain, codomain, binder_info, tag) ->
-      TmPi (x, normalize domain, normalize codomain, binder_info, tag)
+      let domain = normalize domain in
+      let codomain = normalize codomain in
+      merge_results
+        (TmPi (x, domain.term, codomain.term, binder_info, tag))
+        [head; domain; codomain]
   | TmApp (fn, arg, app_boundary, tag) ->
-      let fn' = normalize fn in
-      let arg' = normalize arg in
-      let result = TmApp (fn', arg', app_boundary, tag) in
-      normalize_if_reduced result
+      let fn = normalize fn in
+      let arg = normalize arg in
+      let result =
+        whnf (TmApp (fn.term, arg.term, app_boundary, tag))
+      in
+      merge_results result.term [head; fn; arg; result]
   | TmIf (cond, thn, els, tag) ->
-      let cond' = normalize cond in
-      let thn' = normalize thn in
-      let els' = normalize els in
-      let result = TmIf (cond', thn', els', tag) in
-      normalize_if_reduced result
+      let cond = normalize cond in
+      let thn = normalize thn in
+      let els = normalize els in
+      let result =
+        whnf (TmIf (cond.term, thn.term, els.term, tag))
+      in
+      merge_results result.term [head; cond; thn; els; result]
   | TmPrim2 (op, lhs, rhs, tag) ->
-      let lhs' = normalize lhs in
-      let rhs' = normalize rhs in
-      let result = TmPrim2 (op, lhs', rhs', tag) in
-      normalize_if_reduced result
+      let lhs = normalize lhs in
+      let rhs = normalize rhs in
+      let result =
+        whnf (TmPrim2 (op, lhs.term, rhs.term, tag))
+      in
+      merge_results result.term [head; lhs; rhs; result]
   | TmPrim1 (op, body, tag) ->
-      let body' = normalize body in
-      let result = TmPrim1 (op, body', tag) in
-      normalize_if_reduced result
-  (* WHNF should always eliminate lets, but handling one here makes the
-     function robust if whnf's behavior later changes. *)
-  | TmLet (x, value, body, _) -> normalize (subst_vars_in_term x value body)
-  | (TmLiteral _ | TmVar _ | TmUniverse _ | TmMeta _ | TmPrimTy _) as tm -> tm
+      let body = normalize body in
+      let result = whnf (TmPrim1 (op, body.term, tag)) in
+      merge_results result.term [head; body; result]
+  | TmLet (x, value, body, _) ->
+      normalize (subst_vars_in_term x value body)
+  | (TmLiteral _ | TmVar _ | TmUniverse _
+    | TmMeta _ | TmPrimTy _) ->
+      head
 
-and normalize_if_reduced tm =
-  let tm' = whnf tm in
-  if tm' = tm then
-    tm
+and normalize_if_reduced result =
+  let reduced = whnf result.term in
+  let stuck_metas =
+    StringSet.union result.stuck_metas reduced.stuck_metas
+  in
+  if reduced.term = result.term then
+    { term = result.term; stuck_metas }
   else
-    normalize tm'
+    let normalized = normalize reduced.term in
+    {
+      term = normalized.term;
+      stuck_metas =
+        StringSet.union stuck_metas normalized.stuck_metas
+    }
 ;;
 
 type typed_tag = (sourcespan * (sourcespan term))

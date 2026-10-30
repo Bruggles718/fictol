@@ -1,6 +1,8 @@
 open Types
 open Exprs
 
+module StringSet = Set.Make (String)
+
 type app_boundary =
   | Continue
   | End
@@ -13,7 +15,7 @@ type binder_info =
   }
 
 type 'a term =
-  | TmUniverse of int
+  | TmUniverse of int * 'a
   | TmPi of string * 'a term * 'a term * binder_info * 'a
   | TmLambda of string * 'a term * 'a term * binder_info * 'a
   | TmLet of string * 'a term * 'a term * 'a
@@ -24,7 +26,7 @@ type 'a term =
   | TmLiteral of lit * 'a
   | TmPrimTy of typ * 'a
   | TmVar of string * 'a
-  | TmMeta of string * 'a
+  | TmMeta of string * StringSet.t * 'a
 
 and 'a term_method_impl =
   | TImplDecl of 'a term

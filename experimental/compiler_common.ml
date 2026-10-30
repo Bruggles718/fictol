@@ -10,7 +10,7 @@ open Llvm
 open Stdint
 open Fictol_stubs
 
-module StringSet = Set.Make (String)
+(* module StringSet = Set.Make (String) *)
 module StringMap = Map.Make (String)
 
 type 'a name_envt = (string * 'a) list
