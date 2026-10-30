@@ -76,7 +76,7 @@ let rec map_tags_decl (f : 'a -> 'b) (d : 'a decl) : 'b decl =
         ( map_tags_fun_sig f fs )
   | DClass (name, params, supers, sigs, tag) ->
       DClass
-        (name, params, List.map (map_tags_expr f) supers, List.map (map_tags_fun_sig f) sigs, f tag)
+        (name, List.map (map_tags_fun_param f) params, List.map (map_tags_expr f) supers, List.map (map_tags_fun_sig f) sigs, f tag)
   | DInstance (generics, head, impls, tag) ->
       DInstance
         ( List.map (map_tags_fun_param f) generics,
@@ -140,12 +140,13 @@ let rename (rename_with_tag : string -> 'a -> string) (p : 'a program) : 'a prog
         }
 
     | DClass (name, params, constraints, methods, tag) ->
+        let new_class_params, new_env = helpFPs env params in
         DClass (
           name,
-          params,
-          List.map (helpE env) constraints,
+          new_class_params,
+          List.map (helpE new_env) constraints,
           List.map (fun fs ->
-            let new_params, env' = helpFPs env fs.fparams in
+            let new_params, env' = helpFPs new_env fs.fparams in
             {
               fs with
               fparams = new_params;

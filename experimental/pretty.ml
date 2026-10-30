@@ -233,7 +233,7 @@ and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : s
       string_of_func_sig_with depth print_a fun_sig
   | DClass (name, params, superclasses, method_sigs, a) ->
       sprintf "(typeclass %s%s%s:\n  %s)%s" name
-        (let gens = ExtString.String.join ", " params in
+        (let gens = ExtString.String.join ", " (List.map (string_of_fun_param print_a) params) in
          if List.length params > 0 then
            "<" ^ gens ^ ">"
          else

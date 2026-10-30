@@ -15,6 +15,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let uwidths = [U8; U16; U32; U64] in *)
   (* let int_types = List.map (fun w -> TyCon (Int w)) widths in
   let int_types = int_types @ List.map (fun w -> TyCon (UInt w)) uwidths in *)
+  let type_type = EId("Type", dummy_span) in
   let int_types = [
     "i8"; "i16"; "i32"; "i64";
     "u8"; "u16"; "u32"; "u64";
@@ -22,7 +23,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let int_types = List.map (fun s -> EId(s, dummy_span)) int_types in
   (* let self = TyVar "Self" in *)
   let self = EId("Self", dummy_span) in
-  let params_self = ["Self"] in
+  let params_self = [(FPName("Self", type_type, Explicit, dummy_span))] in
   let make_arg name typ = FPName (name, typ, Explicit, dummy_span) in
   let make_prim2_method name ret_typ =
     { fname= name;
@@ -142,7 +143,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
                 ImplPrim1 prim_op )
             method_sigs
         in
-        DInstance ([(FPName("T", EId("Type", dummy_span), Explicit, dummy_span))], make_superclass name [typ], method_impls, dummy_span)
+        DInstance ([(FPName("T", type_type, Explicit, dummy_span))], make_superclass name [typ], method_impls, dummy_span)
     | _ -> ice "not class, what??"
   in
   let instances =

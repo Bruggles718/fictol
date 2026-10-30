@@ -89,7 +89,7 @@ and 'a fun_sig =
 
 type 'a decl =
   | DFun of 'a fun_sig
-  | DClass of string * string list * 'a expr list * 'a fun_sig list * 'a
+  | DClass of string * 'a fun_param list * 'a expr list * 'a fun_sig list * 'a
   | DInstance of 'a fun_param list * 'a expr * 'a method_impl list * 'a
 
 and 'a method_impl =
