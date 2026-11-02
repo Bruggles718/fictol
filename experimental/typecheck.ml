@@ -393,6 +393,22 @@ and normalize_if_reduced result =
     }
 ;;
 
+let rec apply_subst_term (subst : unit term subst) (t : 'a term) : 'a term =
+  List.fold_left (fun acc (x, m) -> subst_metas_in_term x m acc) t subst
+
+and apply_subst_env (subst : unit term subst) (env : unit term envt) : unit term envt =
+  StringMap.map (fun typ -> apply_subst_term subst typ) env
+
+and apply_subst_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
+  List.map (fun (tyvar, to_typ) -> (tyvar, apply_subst_term sub1 to_typ)) sub2
+;;
+
+let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
+  sub1 @ apply_subst_subst sub1 sub2
+;;
+
+let occurs (name : string) (t : 'a term) = List.mem name (tm_free_vars t)
+
 let tag_term (tag : 'a) (tm : unit term) : 'a term =
   match tm with
   | TmUniverse (level, _) -> TmUniverse (level, tag)
@@ -499,9 +515,7 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
         For TmIf, when checking the true branch, add (p: So(cond)) to the env.
         This way, extra values can be available for type inference without any extra syntactic sugar
         or runtime erasure. It all just happens during the type inference. I'm a genius btw. *)
-    (* let rec infer_term_elab (env : sourcespan term envt) (e : sourcespan term) :
-      sourcespan term subst * sourcespan term * sourcespan term list * (typed_tag) term = *)
-    let rec infer_type_elab (env: unit term envt) (tm: sourcespan term) : 'a infer_result =
+    let rec infer_type_elab (env: unit term envt) (tm: 'a term) : 'b infer_result =
         match tm with
         | TmLiteral(LitBool(b), tag) ->
             let inferred_type = TmPrimTy(Bool, ()) in
