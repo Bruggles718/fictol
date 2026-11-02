@@ -41,7 +41,7 @@ let rec freshen (banlist : string list) (base : string) =
 
 let rec subst_vars_in_term x m tm =
   match tm with
-  | TmVar (y, tag) when x = y -> m
+  | TmVar (y, tag) when x = y -> tag_term tag m
   | TmApp (m', n, app_boundary, tag) -> TmApp (subst_vars_in_term x m m', subst_vars_in_term x m n, app_boundary, tag)
   | TmLet (y, a, n, tag) when x = y -> TmLet (y, subst_vars_in_term x m a, n, tag)
   | TmLet (y, a, n, tag) when List.mem y (tm_free_vars m) ->
@@ -72,9 +72,9 @@ and rename x' binder =
   | _ -> raise (InternalCompilerError "rename term failure: Given non binder")
 ;;
 
-let rec subst_metas_in_term x m tm =
+let rec subst_metas_in_term x (m: unit term) (tm: 'a term) : ('a term) =
   match tm with
-  | TmMeta (y, env, tag) when x = y -> m
+  | TmMeta (y, env, tag) when x = y -> tag_term tag m
   | TmApp (m', n, app_boundary, tag) ->
       TmApp (subst_metas_in_term x m m', subst_metas_in_term x m n, app_boundary, tag)
   | TmLet (y, a, n, tag) -> TmLet (y, subst_metas_in_term x m a, n, tag)
@@ -393,87 +393,6 @@ and normalize_if_reduced result =
     }
 ;;
 
-let rec apply_subst_term (subst : unit term subst) (t : 'a term) : 'a term =
-  List.fold_left (fun acc (x, m) -> subst_metas_in_term x m acc) t subst
-
-and apply_subst_env (subst : unit term subst) (env : unit term envt) : unit term envt =
-  StringMap.map (fun typ -> apply_subst_term subst typ) env
-
-and apply_subst_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
-  List.map (fun (tyvar, to_typ) -> (tyvar, apply_subst_term sub1 to_typ)) sub2
-;;
-
-let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
-  sub1 @ apply_subst_subst sub1 sub2
-;;
-
-let occurs (name : string) (t : 'a term) = List.mem name (tm_free_vars t)
-
-let tag_term (tag : 'a) (tm : unit term) : 'a term =
-  match tm with
-  | TmUniverse (level, _) -> TmUniverse (level, tag)
-  | TmPi (name, domain, codomain, binder_info, _) ->
-      TmPi (name, domain, codomain, binder_info, tag)
-  | TmLambda (name, domain, body, binder_info, _) ->
-      TmLambda (name, domain, body, binder_info, tag)
-  | TmLet (name, value, body, _) ->
-      TmLet (name, value, body, tag)
-  | TmApp (fn, arg, app_boundary, _) ->
-      TmApp (fn, arg, app_boundary, tag)
-  | TmPrim1 (op, arg, _) -> TmPrim1 (op, arg, tag)
-  | TmPrim2 (op, lhs, rhs, _) -> TmPrim2 (op, lhs, rhs, tag)
-  | TmIf (cond, then_branch, else_branch, _) ->
-      TmIf (cond, then_branch, else_branch, tag)
-  | TmLiteral (lit, _) -> TmLiteral (lit, tag)
-  | TmPrimTy (typ, _) -> TmPrimTy (typ, tag)
-  | TmVar (name, _) -> TmVar (name, tag)
-  | TmMeta (name, context, _) -> TmMeta (name, context, tag)
-
-let rec untag_term (tm : 'a term) : unit term =
-  match tm with
-  | TmUniverse (level, _) ->
-      TmUniverse (level, ())
-  | TmPi (name, domain, codomain, binder_info, _) ->
-      TmPi
-        (name, untag_term domain, untag_term codomain, binder_info, ())
-  | TmLambda (name, domain, body, binder_info, _) ->
-      TmLambda
-        (name, untag_term domain, untag_term body, binder_info, ())
-  | TmLet (name, value, body, _) ->
-      TmLet (name, untag_term value, untag_term body, ())
-  | TmApp (fn, arg, app_boundary, _) ->
-      TmApp (untag_term fn, untag_term arg, app_boundary, ())
-  | TmPrim1 (op, arg, _) ->
-      TmPrim1 (op, untag_term arg, ())
-  | TmPrim2 (op, lhs, rhs, _) ->
-      TmPrim2 (op, untag_term lhs, untag_term rhs, ())
-  | TmIf (cond, then_branch, else_branch, _) ->
-      TmIf
-        (untag_term cond, untag_term then_branch, untag_term else_branch, ())
-  | TmLiteral (lit, _) ->
-      TmLiteral (lit, ())
-  | TmPrimTy (typ, _) ->
-      TmPrimTy (typ, ())
-  | TmVar (name, _) ->
-      TmVar (name, ())
-  | TmMeta (name, context, _) ->
-      TmMeta (name, context, ())
-
-let tag_of_term (tm : 'a term) : 'a =
-  match tm with
-  | TmUniverse (_, tag)
-  | TmPi (_, _, _, _, tag)
-  | TmLambda (_, _, _, _, tag)
-  | TmLet (_, _, _, tag)
-  | TmApp (_, _, _, tag)
-  | TmPrim1 (_, _, tag)
-  | TmPrim2 (_, _, _, tag)
-  | TmIf (_, _, _, tag)
-  | TmLiteral (_, tag)
-  | TmPrimTy (_, tag)
-  | TmVar (_, tag)
-  | TmMeta (_, _, tag) -> tag
-
 type typed_tag = (sourcespan * (sourcespan term))
 
 (* for tracking postponed unification *)
@@ -499,6 +418,22 @@ type 'a infer_result =
         inf_res_wanteds: (wanted list);
         inf_res_elaborated_term: ('a term);
     }
+
+let apply_subst_term (subst : unit term subst) (t : 'a term) : 'a term =
+  List.fold_left (fun acc (x, m) -> subst_metas_in_term x m acc) t subst
+
+let apply_subst_env (subst : unit term subst) (env : unit term envt) : unit term envt =
+  StringMap.map (fun typ -> (apply_subst_term subst typ)) env
+
+let apply_subst_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
+  List.map (fun (tyvar, to_typ) -> (tyvar, (apply_subst_term sub1 to_typ))) sub2
+
+
+let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
+  sub1 @ apply_subst_subst sub1 sub2
+
+
+let occurs (name : string) (t : 'a term) = List.mem name (tm_free_vars t)
 
 let type_synth_terms (p: sourcespan program) = failwith "TODO"
     (* IDEA: 
