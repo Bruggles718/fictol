@@ -19,6 +19,18 @@ let rec tm_free_vars tm =
   | TmUniverse _ | TmLiteral _ | TmPrimTy _ | TmMeta _ -> []
 ;;
 
+let rec tm_meta_vars tm =
+  match tm with
+  | TmMeta (x, scope, tag) -> [x]
+  | TmApp (m, n, app_boundary, tag) -> tm_free_vars m @ tm_free_vars n
+  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) | TmLet (x, a, m, tag) ->
+      tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
+  | TmIf (cond, thn, els, tag) -> tm_free_vars cond @ tm_free_vars thn @ tm_free_vars els
+  | TmPrim1 (op, body, tag) -> tm_free_vars body
+  | TmPrim2 (op, lhs, rhs, tag) -> tm_free_vars lhs @ tm_free_vars rhs
+  | TmUniverse _ | TmLiteral _ | TmPrimTy _ | TmVar _ -> []
+;;
+
 let rec binders tm =
   match tm with
   | TmApp (m, n, app_boundary, tag) -> binders m @ binders n
@@ -433,7 +445,39 @@ let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term 
   sub1 @ apply_subst_subst sub1 sub2
 
 
-let occurs (name : string) (t : 'a term) = List.mem name (tm_free_vars t)
+let occurs (name : string) (t : 'a term) = List.mem name (tm_meta_vars t)
+
+let unify (tm1 : 'a term) (tm2 : 'a term) (span : sourcespan) : (unit term subst * unit term residual list) =
+    let unify_meta_other meta_name meta_scope other =
+        if occurs meta_name other then
+            match other with
+            | TmMeta (other_name, other_scope, other_tag) when other_name = meta_name -> []
+            | _ ->
+                failwith (sprintf "Unification failure at <%s>:\noccurs check failed " (string_of_sourcespan span))
+        else
+            let ftv = tm_free_vars other in
+            let not_in_scope = List.filter (fun var_name ->
+                    not (StringSet.mem var_name meta_scope)) ftv in
+            match not_in_scope with
+            | [] -> [(meta_name, untag_term other)]
+            | _ -> failwith 
+                (sprintf 
+                "Unification failure at <%s>:\nmeta variable %s cannot be substituted with variables outside of it's scope." 
+                (string_of_sourcespan span) meta_name)
+    in
+    let tm1_norm_res = normalize tm1 in
+    let tm2_norm_res = normalize tm2 in
+    match tm1_norm_res.nr_stuck_metas, tm2_norm_res.nr_stuck_metas with
+    | stuck1, stuck2 when ((StringSet.is_empty stuck1) || (StringSet.is_empty stuck2)) -> 
+        [], [{r_constraint = (tm1_norm_res.nr_term, tm2_norm_res.nr_term); r_blockers = (StringSet.to_list (StringSet.union stuck1 stuck2))}]
+    | _ -> (
+            match tm1_norm_res.nr_term, tm2_norm_res.nr_term with
+            | TmMeta (name, scope, tag), other | other, TmMeta (name, scope, tag) ->
+                let subst = unify_meta_other name scope other in
+                subst, []
+            | _, _ -> failwith (sprintf "Unification failure at <%s>:\ncannot unify %s and %s" (string_of_sourcespan span) "<tm1>" "<tm2>")
+    )
+
 
 let type_synth_terms (p: sourcespan program) = failwith "TODO"
     (* IDEA: 
