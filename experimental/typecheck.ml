@@ -411,7 +411,7 @@ type typed_tag = (sourcespan * (sourcespan term))
 type 'a residual =
     {
         (* terms to unify *)
-        r_constraint: ('a term * 'a term);
+        r_constraint: ('a term) * ('a term);
         (* metas required before further reduction *)
         r_blockers: (string list)
     }
@@ -447,7 +447,7 @@ let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term 
 
 let occurs (name : string) (t : 'a term) = List.mem name (tm_meta_vars t)
 
-let unify (tm1 : 'a term) (tm2 : 'a term) (span : sourcespan) : (unit term subst * unit term residual list) =
+let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit term subst * unit residual list) =
     let unify_meta_other meta_name meta_scope other =
         if occurs meta_name other then
             match other with
@@ -459,7 +459,7 @@ let unify (tm1 : 'a term) (tm2 : 'a term) (span : sourcespan) : (unit term subst
             let not_in_scope = List.filter (fun var_name ->
                     not (StringSet.mem var_name meta_scope)) ftv in
             match not_in_scope with
-            | [] -> [(meta_name, untag_term other)]
+            | [] -> [(meta_name, other)]
             | _ -> failwith 
                 (sprintf 
                 "Unification failure at <%s>:\nmeta variable %s cannot be substituted with variables outside of it's scope." 
@@ -468,13 +468,27 @@ let unify (tm1 : 'a term) (tm2 : 'a term) (span : sourcespan) : (unit term subst
     let tm1_norm_res = normalize tm1 in
     let tm2_norm_res = normalize tm2 in
     match tm1_norm_res.nr_stuck_metas, tm2_norm_res.nr_stuck_metas with
-    | stuck1, stuck2 when ((StringSet.is_empty stuck1) || (StringSet.is_empty stuck2)) -> 
+    | stuck1, stuck2 when not ((StringSet.is_empty stuck1) || (StringSet.is_empty stuck2)) -> 
         [], [{r_constraint = (tm1_norm_res.nr_term, tm2_norm_res.nr_term); r_blockers = (StringSet.to_list (StringSet.union stuck1 stuck2))}]
     | _ -> (
-            match tm1_norm_res.nr_term, tm2_norm_res.nr_term with
+            let ntm1, ntm2 = tm1_norm_res.nr_term, tm2_norm_res.nr_term in
+            match ntm1, ntm2 with
             | TmMeta (name, scope, tag), other | other, TmMeta (name, scope, tag) ->
                 let subst = unify_meta_other name scope other in
                 subst, []
+            | _, _ when alpha_eq ntm1 ntm2 -> [], []
+            | TmApp(t1_ret, t1_arg, app_boundary1, tag1), TmApp(t2_ret, t2_arg, app_boundary2, tag2)
+            when app_boundary1 = app_boundary2 ->
+                let ret_subst, ret_residuals = unify (t1_ret) (t2_ret) span in
+                let arg_subst, arg_residuals = unify (t1_arg) (t2_arg) span in
+                compose_subst ret_subst arg_subst, ret_residuals @ arg_residuals
+            | TmPi(x1, a1, m1, binder_info1, tag1), TmPi(x2, a2, m2, binder_info2, tag2) 
+            | TmLambda(x1, a1, m1, binder_info1, tag1), TmLambda(x2, a2, m2, binder_info2, tag2) 
+            when binder_info1 = binder_info2 ->
+                let arg_subst, arg_residuals = unify (a1) (a2) span in
+                let ret_subst, ret_residuals = unify (m1) (m2) span in
+                compose_subst arg_subst ret_subst, arg_residuals @ ret_residuals
+            (* TODO: other terms *)
             | _, _ -> failwith (sprintf "Unification failure at <%s>:\ncannot unify %s and %s" (string_of_sourcespan span) "<tm1>" "<tm2>")
     )
 
@@ -570,4 +584,49 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
                 inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmVar(name, (tag, inferred_type))
             }
+        | TmApp(called, arg, app_boundary, tag) ->
+            let inf_res_called = infer_type_elab env called in
+            let new_env = apply_subst_env inf_res_called.inf_res_subst env in
+            infer_type_app_elab new_env inf_res_called arg app_boundary tag
         | _ -> failwith "Unsupported term"
+    and infer_type_app_elab env called_inf_res arg app_boundary span =
+        match called_inf_res.inf_res_inferred_type with
+        | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) when binder_info.bi_piinfo = Explicit ->
+            let arg_inf_res = infer_type_elab env arg in
+            let arg_typ = (
+                apply_subst_term called_inf_res.inf_res_subst
+                (apply_subst_term
+                    arg_inf_res.inf_res_subst
+                    arg_inf_res.inf_res_inferred_type)
+            ) in
+            let new_typ_of_bound_name = apply_subst_term arg_inf_res.inf_res_subst
+                (apply_subst_term called_inf_res.inf_res_subst typ_of_bound_name) in
+            let subst, residuals = unify (arg_typ) (new_typ_of_bound_name) span in
+            let new_subst, new_residuals = 
+                compose_subst called_inf_res.inf_res_subst (compose_subst arg_inf_res.inf_res_subst subst),
+                called_inf_res.inf_res_residuals @ arg_inf_res.inf_res_residuals @ residuals 
+            in
+            let new_ret_typ = apply_subst_term subst return_typ in
+            let arg_term = apply_subst_term subst arg_inf_res.inf_res_elaborated_term in
+            let result_type = subst_vars_in_term bound_name (untag_term arg_term) new_ret_typ in
+            let result_nr_res = normalize result_type in
+            let result_type = result_nr_res.nr_term in
+            let elaborated_term =
+                TmApp (
+                    apply_subst_term new_subst called_inf_res.inf_res_elaborated_term,
+                    arg_term,
+                    app_boundary,
+                    (span, result_type)
+                ) in
+            {
+                inf_res_subst = new_subst;
+                inf_res_inferred_type = result_type;
+                inf_res_residuals = new_residuals;
+                inf_res_wanteds =
+                called_inf_res.inf_res_wanteds
+                @ arg_inf_res.inf_res_wanteds;
+                inf_res_elaborated_term = elaborated_term;
+            }
+        | _ -> failwith "Expected callable, given unsupported type"
+
+
