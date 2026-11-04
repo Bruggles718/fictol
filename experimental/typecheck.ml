@@ -493,7 +493,13 @@ let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit te
     )
 
 
-let type_synth_terms (p: sourcespan program) = failwith "TODO"
+let type_synth_terms (p: sourcespan program) =
+    let gensym =
+        let next = ref 0 in
+        fun name ->
+        next := !next + 1;
+        sprintf "%s_%d" name !next
+    in
     (* IDEA: 
         getting the Pi type of a function should remove the implicit arguments and subst them with fresh meta variables *)
     (* IDEA: 
@@ -587,9 +593,43 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
         | TmApp(called, arg, app_boundary, tag) ->
             let inf_res_called = infer_type_elab env called in
             let new_env = apply_subst_env inf_res_called.inf_res_subst env in
-            infer_type_app_elab new_env inf_res_called arg app_boundary tag
+            infer_type_app_elab new_env called inf_res_called arg app_boundary tag
         | _ -> failwith "Unsupported term"
-    and infer_type_app_elab env called_inf_res arg app_boundary span =
+    and insert_implicit_args env fn_inf_res span =
+            let fn_type = normalize fn_inf_res.inf_res_inferred_type in
+            match fn_type.nr_term with
+            | TmPi (bound_name, _, return_typ, binder_info, _)
+                when binder_info.bi_piinfo = Implicit ->
+                let scope =
+                    StringMap.fold
+                        (fun key _ acc -> StringSet.add key acc)
+                        env StringSet.empty
+                in
+                let fresh_meta_type = TmMeta (gensym "?mtyp", scope, ()) in
+                let fresh_meta = TmMeta (gensym "?m", scope, (span, fresh_meta_type)) in
+                let return_typ = apply_subst_term fn_inf_res.inf_res_subst return_typ in
+                let result_type = subst_vars_in_term bound_name (untag_term fresh_meta) return_typ in
+                let result_type = (normalize result_type).nr_term in
+                let elaborated_fn = apply_subst_term fn_inf_res.inf_res_subst fn_inf_res.inf_res_elaborated_term in
+                let elaborated_app =
+                    TmApp (
+                        elaborated_fn,
+                        fresh_meta,
+                        Continue,
+                        (span, result_type)
+                    )
+                in
+                let updated_fn_inf_res = {
+                    fn_inf_res with
+                    inf_res_inferred_type = result_type;
+                    inf_res_elaborated_term = elaborated_app;
+                } in
+                insert_implicit_args env updated_fn_inf_res span
+            | _ -> fn_inf_res
+    and infer_type_app_elab env called called_inf_res arg app_boundary span =
+        let called_inf_res =
+            insert_implicit_args env called_inf_res span
+        in
         match called_inf_res.inf_res_inferred_type with
         | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) when binder_info.bi_piinfo = Explicit ->
             let arg_inf_res = infer_type_elab env arg in
@@ -606,8 +646,8 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
                 compose_subst called_inf_res.inf_res_subst (compose_subst arg_inf_res.inf_res_subst subst),
                 called_inf_res.inf_res_residuals @ arg_inf_res.inf_res_residuals @ residuals 
             in
-            let new_ret_typ = apply_subst_term subst return_typ in
-            let arg_term = apply_subst_term subst arg_inf_res.inf_res_elaborated_term in
+            let new_ret_typ = apply_subst_term new_subst return_typ in
+            let arg_term = apply_subst_term new_subst arg_inf_res.inf_res_elaborated_term in
             let result_type = subst_vars_in_term bound_name (untag_term arg_term) new_ret_typ in
             let result_nr_res = normalize result_type in
             let result_type = result_nr_res.nr_term in
@@ -628,5 +668,6 @@ let type_synth_terms (p: sourcespan program) = failwith "TODO"
                 inf_res_elaborated_term = elaborated_term;
             }
         | _ -> failwith "Expected callable, given unsupported type"
-
+    in
+    ()
 
