@@ -529,6 +529,13 @@ let type_synth_terms (p: sourcespan program) =
         just whether it is the last argument or not. This is because with mixed ordering 
         of implicit, explicit, auto, and constraints, it may not be possible to tell
         from a TmApp alone where the boundaries lie.*)
+    (* Thoughts:
+        Something about the way that infer_type_app_elab works just doesn't sit right with me.
+        Rather than a separate insert_implicit_args, it should be able to handle the implicit args.
+        I think there should be some kind of replacement for "normalize" when the return type is
+        computed. Perhaps that's where the recursive call should be? Maybe it should depend on the
+        app_boundary? It needs some way of handling when there are trailing constraints or implicit args.
+        This is getting really frustrating. *)
     let rec infer_type_elab (env: unit term envt) (tm: 'a term) : 'b infer_result =
         match tm with
         | TmLiteral(LitBool(b), tag) ->
