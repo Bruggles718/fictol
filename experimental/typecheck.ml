@@ -599,7 +599,7 @@ let type_synth_terms (p: sourcespan program) =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
             match fn_type.nr_term with
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
-                when (binder_info.bi_piinfo = Implicit || binder_info.bi_piinfo = Auto) ->
+                when (binder_info.bi_piinfo = Implicit) ->
                 let scope =
                     StringMap.fold
                         (fun key _ acc -> StringSet.add key acc)
