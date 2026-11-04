@@ -593,20 +593,19 @@ let type_synth_terms (p: sourcespan program) =
         | TmApp(called, arg, app_boundary, tag) ->
             let inf_res_called = infer_type_elab env called in
             let new_env = apply_subst_env inf_res_called.inf_res_subst env in
-            infer_type_app_elab new_env called inf_res_called arg app_boundary tag
+            infer_type_app_elab new_env inf_res_called arg app_boundary tag
         | _ -> failwith "Unsupported term"
     and insert_implicit_args env fn_inf_res span =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
             match fn_type.nr_term with
-            | TmPi (bound_name, _, return_typ, binder_info, _)
-                when binder_info.bi_piinfo = Implicit ->
+            | TmPi (bound_name, bound_type, return_typ, binder_info, _)
+                when (binder_info.bi_piinfo = Implicit || binder_info.bi_piinfo = Auto) ->
                 let scope =
                     StringMap.fold
                         (fun key _ acc -> StringSet.add key acc)
                         env StringSet.empty
                 in
-                let fresh_meta_type = TmMeta (gensym "?mtyp", scope, ()) in
-                let fresh_meta = TmMeta (gensym "?m", scope, (span, fresh_meta_type)) in
+                let fresh_meta = TmMeta (gensym "?m", scope, (span, bound_type)) in
                 let return_typ = apply_subst_term fn_inf_res.inf_res_subst return_typ in
                 let result_type = subst_vars_in_term bound_name (untag_term fresh_meta) return_typ in
                 let result_type = (normalize result_type).nr_term in
@@ -626,10 +625,8 @@ let type_synth_terms (p: sourcespan program) =
                 } in
                 insert_implicit_args env updated_fn_inf_res span
             | _ -> fn_inf_res
-    and infer_type_app_elab env called called_inf_res arg app_boundary span =
-        let called_inf_res =
-            insert_implicit_args env called_inf_res span
-        in
+    and infer_type_app_elab env called_inf_res arg app_boundary span =
+        let called_inf_res = insert_implicit_args env called_inf_res span in
         match called_inf_res.inf_res_inferred_type with
         | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) when binder_info.bi_piinfo = Explicit ->
             let arg_inf_res = infer_type_elab env arg in
