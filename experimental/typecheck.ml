@@ -520,7 +520,10 @@ let type_synth_terms (p: sourcespan program) =
         infer_type_elab when coming across a Pi type with a constraint will remove it
         from the type and try to solve the wanted. If stuck, we add it to the wanted list.
         Need to come up with a way to track stuck autos. Stuck implicits are tracked with
-        residuals, but stuck autos need a way to defer as well. *)
+        residuals, but stuck autos need a way to defer as well.
+        Maybe also replace the scope of TmMeta with a StringMap so it is actually just an
+        environment. When proof solving occurs, it can look for values in the env that existed
+        when the meta was created. *)
     let rec infer_type_elab (env: unit term envt) (tm: 'a term) : 'b infer_result =
         match tm with
         | TmLiteral(LitBool(b), tag) ->
