@@ -524,6 +524,11 @@ let type_synth_terms (p: sourcespan program) =
         Maybe also replace the scope of TmMeta with a StringMap so it is actually just an
         environment. When proof solving occurs, it can look for values in the env that existed
         when the meta was created. *)
+    (* IDEA:
+        make Pi types contain information about how many arguments are left or possibly
+        just whether it is the last argument or not. This is because with mixed ordering 
+        of implicit, explicit, auto, and constraints, it may not be possible to tell
+        from a TmApp alone where the boundaries lie.*)
     let rec infer_type_elab (env: unit term envt) (tm: 'a term) : 'b infer_result =
         match tm with
         | TmLiteral(LitBool(b), tag) ->
