@@ -113,6 +113,7 @@ and string_of_piinfo piinfo =
   | Explicit -> ""
   | Implicit -> "implicit "
   | Auto -> "auto "
+  | Constraint -> "constraint "
 
 and string_of_fun_param (print_a) (fp) =
   match fp with

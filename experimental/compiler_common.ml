@@ -11,13 +11,13 @@ open Stdint
 open Fictol_stubs
 
 (* module StringSet = Set.Make (String) *)
-module StringMap = Map.Make (String)
+(* module StringMap = Map.Make (String) *)
 
 type 'a name_envt = (string * 'a) list
 
 type 'a tag_envt = (tag * 'a) list
 
-type 'a envt = 'a StringMap.t
+(* type 'a envt = 'a StringMap.t *)
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 

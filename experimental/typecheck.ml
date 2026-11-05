@@ -407,11 +407,17 @@ and normalize_if_reduced result =
 
 type typed_tag = (sourcespan * (sourcespan term))
 
+type 'a residual_constraint = 
+    | RCUnify of 'a term * 'a term
+    | RCAuto of 'a term
+    | RCWantedTC of unit term * sourcespan
+
 (* for tracking postponed unification *)
 type 'a residual =
     {
         (* terms to unify *)
-        r_constraint: ('a term) * ('a term);
+        (* r_constraint: ('a term) * ('a term); *)
+        r_constraint: 'a residual_constraint;
         (* metas required before further reduction *)
         r_blockers: (string list)
     }
@@ -427,7 +433,7 @@ type 'a infer_result =
         inf_res_subst: (unit term subst);
         inf_res_inferred_type: (unit term);
         inf_res_residuals: (unit residual list);
-        inf_res_wanteds: (wanted list);
+        (* inf_res_wanteds: (wanted list); *)
         inf_res_elaborated_term: ('a term);
     }
 
@@ -457,7 +463,7 @@ let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit te
         else
             let ftv = tm_free_vars other in
             let not_in_scope = List.filter (fun var_name ->
-                    not (StringSet.mem var_name meta_scope)) ftv in
+                    not (StringMap.mem var_name meta_scope)) ftv in
             match not_in_scope with
             | [] -> [(meta_name, other)]
             | _ -> failwith 
@@ -469,7 +475,7 @@ let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit te
     let tm2_norm_res = normalize tm2 in
     match tm1_norm_res.nr_stuck_metas, tm2_norm_res.nr_stuck_metas with
     | stuck1, stuck2 when not ((StringSet.is_empty stuck1) || (StringSet.is_empty stuck2)) -> 
-        [], [{r_constraint = (tm1_norm_res.nr_term, tm2_norm_res.nr_term); r_blockers = (StringSet.to_list (StringSet.union stuck1 stuck2))}]
+        [], [{r_constraint = RCUnify(tm1_norm_res.nr_term, tm2_norm_res.nr_term); r_blockers = (StringSet.to_list (StringSet.union stuck1 stuck2))}]
     | _ -> (
             let ntm1, ntm2 = tm1_norm_res.nr_term, tm2_norm_res.nr_term in
             match ntm1, ntm2 with
@@ -544,7 +550,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmLiteral(LitBool(b), (tag, inferred_type))
             }
         | TmLiteral(LitChar(c), tag) ->
@@ -553,7 +558,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmLiteral(LitChar(c), (tag, inferred_type))
             }
         | TmLiteral(LitInt(n, suffix), tag) ->
@@ -568,7 +572,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmLiteral(LitInt(n, suffix), (tag, inferred_type))
             }
         | TmLiteral(LitString(s), tag) ->
@@ -582,7 +585,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = str_typ; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmLiteral(LitString(s), (tag, str_typ))
             }
         | TmUniverse(lvl, tag) ->
@@ -591,7 +593,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmUniverse(lvl, (tag, inferred_type))
             }
         | TmPrimTy(typ, tag) ->
@@ -600,7 +601,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmPrimTy(typ, (tag, inferred_type))
             }
         | TmVar(name, tag) ->
@@ -609,7 +609,6 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_subst = []; 
                 inf_res_inferred_type = inferred_type; 
                 inf_res_residuals = [];
-                inf_res_wanteds = []; 
                 inf_res_elaborated_term = TmVar(name, (tag, inferred_type))
             }
         | TmApp(called, arg, app_boundary, tag) ->
@@ -617,17 +616,22 @@ let type_synth_terms (p: sourcespan program) =
             let new_env = apply_subst_env inf_res_called.inf_res_subst env in
             infer_type_app_elab new_env inf_res_called arg app_boundary tag
         | _ -> failwith "Unsupported term"
-    and insert_implicit_args env fn_inf_res span =
+    and infer_type_app_elab env called_inf_res arg app_boundary span =
+        (* let rec collect_tail_implicits env fn_type =
+            match fn_type with
+            | TmPi (bound_name, bound_type, return_typ, binder_info, _)
+            when binder_info.bi_piinfo = Auto ->
+                 *)
+        let rec insert_implicit_arg env (fn_inf_res: (sourcespan * unit term) infer_result) =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
             match fn_type.nr_term with
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Implicit) ->
-                let scope =
-                    StringMap.fold
-                        (fun key _ acc -> StringSet.add key acc)
-                        env StringSet.empty
-                in
-                let fresh_meta = TmMeta (gensym "?m", scope, (span, bound_type)) in
+                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
+                helper env fn_inf_res fresh_meta (Continue) span
+            (* | TmPi (bound_name, bound_type, return_typ, binder_info, _)
+                when (binder_info.bi_piinfo = Auto) ->
+                let fresh_meta = TmMeta (gensym "?m", env, (span, bound_type)) in
                 let return_typ = apply_subst_term fn_inf_res.inf_res_subst return_typ in
                 let result_type = subst_vars_in_term bound_name (untag_term fresh_meta) return_typ in
                 let result_type = (normalize result_type).nr_term in
@@ -645,48 +649,51 @@ let type_synth_terms (p: sourcespan program) =
                     inf_res_inferred_type = result_type;
                     inf_res_elaborated_term = elaborated_app;
                 } in
-                insert_implicit_args env updated_fn_inf_res span
+                insert_implicit_args env updated_fn_inf_res span *)
             | _ -> fn_inf_res
-    and infer_type_app_elab env called_inf_res arg app_boundary span =
-        let called_inf_res = insert_implicit_args env called_inf_res span in
-        match called_inf_res.inf_res_inferred_type with
-        | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) when binder_info.bi_piinfo = Explicit ->
-            let arg_inf_res = infer_type_elab env arg in
-            let arg_typ = (
-                apply_subst_term called_inf_res.inf_res_subst
-                (apply_subst_term
-                    arg_inf_res.inf_res_subst
-                    arg_inf_res.inf_res_inferred_type)
-            ) in
-            let new_typ_of_bound_name = apply_subst_term arg_inf_res.inf_res_subst
-                (apply_subst_term called_inf_res.inf_res_subst typ_of_bound_name) in
-            let subst, residuals = unify (arg_typ) (new_typ_of_bound_name) span in
-            let new_subst, new_residuals = 
-                compose_subst called_inf_res.inf_res_subst (compose_subst arg_inf_res.inf_res_subst subst),
-                called_inf_res.inf_res_residuals @ arg_inf_res.inf_res_residuals @ residuals 
-            in
-            let new_ret_typ = apply_subst_term new_subst return_typ in
-            let arg_term = apply_subst_term new_subst arg_inf_res.inf_res_elaborated_term in
-            let result_type = subst_vars_in_term bound_name (untag_term arg_term) new_ret_typ in
-            let result_nr_res = normalize result_type in
-            let result_type = result_nr_res.nr_term in
-            let elaborated_term =
-                TmApp (
-                    apply_subst_term new_subst called_inf_res.inf_res_elaborated_term,
-                    arg_term,
-                    app_boundary,
-                    (span, result_type)
-                ) in
-            {
-                inf_res_subst = new_subst;
-                inf_res_inferred_type = result_type;
-                inf_res_residuals = new_residuals;
-                inf_res_wanteds =
-                called_inf_res.inf_res_wanteds
-                @ arg_inf_res.inf_res_wanteds;
-                inf_res_elaborated_term = elaborated_term;
-            }
-        | _ -> failwith "Expected callable, given unsupported type"
+        and helper env (called_inf_res: (sourcespan * unit term) infer_result) arg app_boundary span =
+            match called_inf_res.inf_res_inferred_type with
+            | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) ->
+                if binder_info.bi_app_boundary = End && app_boundary = Continue then
+                    failwith (sprintf "arity mismatch at <%s>" (string_of_sourcespan span))
+                else
+                    let arg_inf_res = infer_type_elab env arg in
+                    let arg_typ = (
+                        apply_subst_term called_inf_res.inf_res_subst
+                        (apply_subst_term
+                            arg_inf_res.inf_res_subst
+                            arg_inf_res.inf_res_inferred_type)
+                    ) in
+                    let new_typ_of_bound_name = apply_subst_term arg_inf_res.inf_res_subst
+                        (apply_subst_term called_inf_res.inf_res_subst typ_of_bound_name) in
+                    let subst, residuals = unify (arg_typ) (new_typ_of_bound_name) span in
+                    let new_subst, new_residuals = 
+                        compose_subst called_inf_res.inf_res_subst (compose_subst arg_inf_res.inf_res_subst subst),
+                        called_inf_res.inf_res_residuals @ arg_inf_res.inf_res_residuals @ residuals 
+                    in
+                    let new_ret_typ = apply_subst_term new_subst return_typ in
+                    let arg_term = apply_subst_term new_subst arg_inf_res.inf_res_elaborated_term in
+                    let result_type = subst_vars_in_term bound_name (untag_term arg_term) new_ret_typ in
+                    let result_nr_res = normalize result_type in
+                    let result_type = result_nr_res.nr_term in
+                    let elaborated_term =
+                        TmApp (
+                            apply_subst_term new_subst called_inf_res.inf_res_elaborated_term,
+                            arg_term,
+                            binder_info.bi_app_boundary,
+                            (span, result_type)
+                        ) in
+                    {
+                        inf_res_subst = new_subst;
+                        inf_res_inferred_type = result_type;
+                        inf_res_residuals = new_residuals;
+                        inf_res_elaborated_term = elaborated_term;
+                    }
+            | _ -> failwith "Expected callable, given unsupported type"
+        in
+        let called_inf_res = insert_implicit_arg env called_inf_res in
+        let new_env = apply_subst_env called_inf_res.inf_res_subst env in
+        helper new_env called_inf_res arg app_boundary span
     in
     ()
 

@@ -32,6 +32,7 @@ and piinfo =
   | Implicit
   | Explicit
   | Auto
+  | Constraint
 
 and 'a fun_param =
   | FPName of string * 'a expr * piinfo * 'a

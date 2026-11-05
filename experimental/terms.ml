@@ -2,6 +2,8 @@ open Types
 open Exprs
 
 module StringSet = Set.Make (String)
+module StringMap = Map.Make (String)
+type 'a envt = 'a StringMap.t
 
 type app_boundary =
   | Continue
@@ -12,6 +14,7 @@ type binder_info =
   {
     bi_call_type: call_type;
     bi_piinfo: piinfo;
+    bi_app_boundary: app_boundary;
   }
 
 type 'a term =
@@ -26,7 +29,7 @@ type 'a term =
   | TmLiteral of lit * 'a
   | TmPrimTy of typ * 'a
   | TmVar of string * 'a
-  | TmMeta of string * StringSet.t * 'a
+  | TmMeta of string * unit term envt * 'a
 
 and 'a term_method_impl =
   | TImplDecl of 'a term
