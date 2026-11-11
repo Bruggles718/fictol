@@ -625,17 +625,15 @@ let type_synth_terms (p: sourcespan program) =
                 failwith (sprintf "arity mismatch at <%s>:\nNot enough args" (string_of_sourcespan span))
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Implicit) ->
-                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
-                let new_env = apply_subst_env new_inf_res.inf_res_subst env in
+                let new_env, new_inf_res = infer_implicit env fn_inf_res in
                 collect_tail_implicits new_env new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Auto) ->
-                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
-                (* run auto solver here *)
-                let new_env = apply_subst_env new_inf_res.inf_res_subst env in
-                collect_tail_implicits new_env new_inf_res
+                let new_env, new_inf_res = infer_implicit env fn_inf_res in
+                let new_subst, new_residuals = (), () (* run auto solver here *) in
+                (* new_inf_res = itself but with apply new_subst to subst, combine residuals *)
+                let new_new_env = apply_subst_env new_inf_res.inf_res_subst env in
+                collect_tail_implicits new_new_env new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Constraint) ->
                 (* run wanted solver here *)
@@ -647,18 +645,21 @@ let type_synth_terms (p: sourcespan program) =
             match fn_type.nr_term with
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Implicit) ->
-                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
-                let new_env = apply_subst_env new_inf_res.inf_res_subst env in
+                let new_env, new_inf_res = infer_implicit env fn_inf_res in
                 insert_implicit_arg new_env new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Auto) ->
-                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
-                (* run auto solver here *)
-                let new_env = apply_subst_env new_inf_res.inf_res_subst env in
-                insert_implicit_arg new_env new_inf_res
+                let new_env, new_inf_res = infer_implicit env fn_inf_res in
+                let new_subst, new_residuals = (), () (* run auto solver here *) in
+                (* new_inf_res = itself but with apply new_subst to subst, combine residuals *)
+                let new_new_env = apply_subst_env new_inf_res.inf_res_subst env in
+                insert_implicit_arg new_new_env new_inf_res
             | _ -> env, fn_inf_res
+        and infer_implicit env fn_inf_res =
+            let fresh_meta = TmMeta (gensym "?m", env, (span)) in
+            let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
+            let new_env = apply_subst_env new_inf_res.inf_res_subst env in
+            new_env, new_inf_res
         and helper env (called_inf_res: (sourcespan * unit term) infer_result) arg app_boundary span =
             match called_inf_res.inf_res_inferred_type with
             | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) ->
