@@ -450,7 +450,6 @@ let apply_subst_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit t
 let compose_subst (sub1 : unit term subst) (sub2 : unit term subst) : unit term subst =
   sub1 @ apply_subst_subst sub1 sub2
 
-
 let occurs (name : string) (t : 'a term) = List.mem name (tm_meta_vars t)
 
 let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit term subst * unit residual list) =
@@ -604,6 +603,27 @@ let type_synth_terms (p: sourcespan program) =
             let inf_res_called = infer_type_elab givens env called in
             let new_env = apply_subst_env inf_res_called.inf_res_subst env in
             infer_type_app_elab givens new_env inf_res_called arg app_boundary tag
+        | TmPi(bound, bound_type, return_typ, binder_info, tag) ->
+            let bound_typ_inf_res = infer_type_elab givens env bound_type in
+            check_is_universe bound_typ_inf_res.inf_res_inferred_type;
+            let new_env = StringMap.add bound (untag_term bound_typ_inf_res.inf_res_elaborated_term) env in
+            let new_env = apply_subst_env bound_typ_inf_res.inf_res_subst new_env in
+            let return_typ_inf_res = infer_type_elab givens new_env return_typ in
+            check_is_universe return_typ_inf_res.inf_res_inferred_type;
+            let new_subst = compose_subst bound_typ_inf_res.inf_res_subst return_typ_inf_res.inf_res_subst in
+            let new_ret_typ = (apply_subst_term new_subst return_typ_inf_res.inf_res_elaborated_term) in
+            {
+                inf_res_elaborated_term = 
+                    TmPi(
+                        bound, 
+                        (apply_subst_term new_subst bound_typ_inf_res.inf_res_elaborated_term),
+                        new_ret_typ,
+                        binder_info,
+                        (tag, return_typ_inf_res.inf_res_inferred_type));
+                inf_res_residuals = bound_typ_inf_res.inf_res_residuals @ return_typ_inf_res.inf_res_residuals;
+                inf_res_inferred_type = return_typ_inf_res.inf_res_inferred_type;
+                inf_res_subst = new_subst
+            }
         | _ -> failwith "Unsupported term"
         ) in
         (* insert comp time evaluated ids into inferred type
@@ -712,6 +732,10 @@ let type_synth_terms (p: sourcespan program) =
         match app_boundary with
         | Continue -> res_inf_res
         | End -> collect_tail_implicits new_new_env res_inf_res
+    and check_is_universe tm =
+        match tm with
+        | TmUniverse _ -> ()
+        | _ -> failwith "expected universe"
     in
     ()
 
