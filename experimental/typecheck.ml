@@ -500,6 +500,12 @@ let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit te
 
 let rec solve_auto (meta: 'a term) (typ: unit term) (subst: unit term subst) (span : sourcespan) : (unit term subst * unit residual list) =
     failwith "TODO"
+    (* 
+        extract meta env and apply subst. 
+        search env for anything bound with the exact type "typ".
+        search enum and struct constructors recursively.
+        search functions in the environment recursively that return the exact type "typ".
+    *)
 
 
 
@@ -627,13 +633,13 @@ let type_synth_terms (p: sourcespan program) =
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Implicit) ->
                 let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
+                let new_inf_res = helper env fn_inf_res fresh_meta span in
                 let new_env = apply_subst_env new_inf_res.inf_res_subst env in
                 new_env, new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Auto) ->
                 let fresh_meta = TmMeta (gensym "?m", env, (span)) in
-                let new_inf_res = helper env fn_inf_res fresh_meta (Continue) span in
+                let new_inf_res = helper env fn_inf_res fresh_meta span in
                 let new_env = apply_subst_env new_inf_res.inf_res_subst env in
                 let new_bound_type = apply_subst_term new_inf_res.inf_res_subst bound_type in
                 let new_subst, new_residuals = solve_auto fresh_meta new_bound_type new_inf_res.inf_res_subst span in
@@ -677,7 +683,7 @@ let type_synth_terms (p: sourcespan program) =
                 let new_env, new_inf_res = implicit_helper env fn_inf_res in
                 insert_implicit_arg new_env new_inf_res
             | _ -> env, fn_inf_res
-        and helper env (called_inf_res: (sourcespan * unit term) infer_result) arg app_boundary span =
+        and helper env (called_inf_res: (sourcespan * unit term) infer_result) arg span =
             match called_inf_res.inf_res_inferred_type with
             | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) ->
                 let arg_inf_res = infer_type_elab env arg in
@@ -715,7 +721,7 @@ let type_synth_terms (p: sourcespan program) =
             | _ -> failwith "Expected callable, given unsupported type"
         in
         let new_env, called_inf_res = insert_implicit_arg env called_inf_res in
-        let res_inf_res = helper new_env called_inf_res arg app_boundary span in
+        let res_inf_res = helper new_env called_inf_res arg span in
         let new_new_env = apply_subst_env res_inf_res.inf_res_subst new_env in
         match app_boundary with
         | Continue -> res_inf_res
