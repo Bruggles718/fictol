@@ -498,10 +498,10 @@ let rec unify (tm1 : unit term) (tm2 : unit term) (span : sourcespan) : (unit te
             | _, _ -> failwith (sprintf "Unification failure at <%s>:\ncannot unify %s and %s" (string_of_sourcespan span) "<tm1>" "<tm2>")
     )
 
-let rec solve_auto (meta: 'a term) (typ: unit term) (subst: unit term subst) (span : sourcespan) : (unit term subst * unit residual list) =
+let rec solve_auto (meta: 'a term) (typ: unit term) (span : sourcespan) : (unit term subst * unit residual list) =
     failwith "TODO"
     (* 
-        extract meta env and apply subst. 
+        extract meta env. 
         search env for anything bound with the exact type "typ".
         search enum and struct constructors recursively.
         search functions in the environment recursively that return the exact type "typ".
@@ -642,7 +642,7 @@ let type_synth_terms (p: sourcespan program) =
                 let new_inf_res = helper env fn_inf_res fresh_meta span in
                 let new_env = apply_subst_env new_inf_res.inf_res_subst env in
                 let new_bound_type = apply_subst_term new_inf_res.inf_res_subst bound_type in
-                let new_subst, new_residuals = solve_auto fresh_meta new_bound_type new_inf_res.inf_res_subst span in
+                let new_subst, new_residuals = solve_auto fresh_meta new_bound_type span in
                 let new_inf_res = {
                     new_inf_res with
                     inf_res_subst = compose_subst new_inf_res.inf_res_subst new_subst;
