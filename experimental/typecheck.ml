@@ -507,7 +507,16 @@ let rec solve_auto (meta: 'a term) (typ: unit term) (span : sourcespan) : (unit 
         search functions in the environment recursively that return the exact type "typ".
     *)
 
+let rec solve_wanted (givens: unit term list) (wanted: 'a term) (span: sourcespan) : unit residual list =
+    failwith "TODO"
 
+(* 
+    compile_time_evaluated will be a list of identifier names to TmLambdas.
+    After a type is inferred, we want to substitute these identifiers
+    with their corresponding lambda and renormalize. Do this across the
+    inference result, but not on the elaborated term.
+*)
+let compile_time_evaluated : (unit term subst) = []
 
 let type_synth_terms (p: sourcespan program) =
     let gensym =
@@ -516,43 +525,13 @@ let type_synth_terms (p: sourcespan program) =
         next := !next + 1;
         sprintf "%s_%d" name !next
     in
-    (* IDEA: 
-        getting the Pi type of a function should remove the implicit arguments and subst them with fresh meta variables *)
-    (* IDEA: 
-        elaboration should lower methods whose impl is a prim. Also, I think change prim methods
-        to not be callable by name. Prevent writing "add(5, 7)" directly. Perhaps losing some
-        ergonomics in some cases, but makes this system much stronger and easier to reason about.*)
-    (* IDEA:
-        Consider adding a "context" to a TmMeta. Need to avoid locals escaping their scope in types.
-        Think about what this representation should be. *)
     (* IDEA:
         Make a TmBorrow, and when doing type inference on the body, add (Reg: Region) to the env.
         For TmIf, when checking the true branch, add (p: So(cond)) to the env.
         This way, extra values can be available for type inference without any extra syntactic sugar
         or runtime erasure. It all just happens during the type inference. I'm a genius btw. *)
-    (* IDEA:
-        add Constraint as a type of piinfo, separate from Auto.
-        Constraints will always be last?
-        infer_type_elab when coming across a Pi type with a constraint will remove it
-        from the type and try to solve the wanted. If stuck, we add it to the wanted list.
-        Need to come up with a way to track stuck autos. Stuck implicits are tracked with
-        residuals, but stuck autos need a way to defer as well.
-        Maybe also replace the scope of TmMeta with a StringMap so it is actually just an
-        environment. When proof solving occurs, it can look for values in the env that existed
-        when the meta was created. *)
-    (* IDEA:
-        make Pi types contain information about how many arguments are left or possibly
-        just whether it is the last argument or not. This is because with mixed ordering 
-        of implicit, explicit, auto, and constraints, it may not be possible to tell
-        from a TmApp alone where the boundaries lie.*)
-    (* Thoughts:
-        Something about the way that infer_type_app_elab works just doesn't sit right with me.
-        Rather than a separate insert_implicit_args, it should be able to handle the implicit args.
-        I think there should be some kind of replacement for "normalize" when the return type is
-        computed. Perhaps that's where the recursive call should be? Maybe it should depend on the
-        app_boundary? It needs some way of handling when there are trailing constraints or implicit args.
-        This is getting really frustrating. *)
-    let rec infer_type_elab (env: unit term envt) (tm: 'a term) : 'b infer_result =
+    let rec infer_type_elab (givens: unit term list) (env: unit term envt) (tm: 'a term) : 'b infer_result =
+        let inf_res = (
         match tm with
         | TmLiteral(LitBool(b), tag) ->
             let inferred_type = TmPrimTy(Bool, ()) in
@@ -622,11 +601,15 @@ let type_synth_terms (p: sourcespan program) =
                 inf_res_elaborated_term = TmVar(name, (tag, inferred_type))
             }
         | TmApp(called, arg, app_boundary, tag) ->
-            let inf_res_called = infer_type_elab env called in
+            let inf_res_called = infer_type_elab givens env called in
             let new_env = apply_subst_env inf_res_called.inf_res_subst env in
-            infer_type_app_elab new_env inf_res_called arg app_boundary tag
+            infer_type_app_elab givens new_env inf_res_called arg app_boundary tag
         | _ -> failwith "Unsupported term"
-    and infer_type_app_elab env called_inf_res arg app_boundary (span: sourcespan) =
+        ) in
+        (* insert comp time evaluated ids into inferred type
+            and normalize everything *)
+        inf_res
+    and infer_type_app_elab givens env called_inf_res arg app_boundary (span: sourcespan) =
         let rec implicit_helper env fn_inf_res =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
             match fn_type.nr_term with
@@ -667,9 +650,12 @@ let type_synth_terms (p: sourcespan program) =
                 collect_tail_implicits new_env new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Constraint) ->
-                (* run wanted solver here *)
-                (* return with this pi removed *)
-                failwith "TODO"
+                let residuals = solve_wanted givens bound_type span in
+                {
+                    fn_inf_res with
+                    inf_res_inferred_type = return_typ;
+                    inf_res_residuals = residuals @ fn_inf_res.inf_res_residuals
+                }
             | _ -> fn_inf_res
         and insert_implicit_arg env (fn_inf_res: (sourcespan * unit term) infer_result) =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
@@ -686,7 +672,7 @@ let type_synth_terms (p: sourcespan program) =
         and helper env (called_inf_res: (sourcespan * unit term) infer_result) arg span =
             match called_inf_res.inf_res_inferred_type with
             | TmPi(bound_name, typ_of_bound_name, return_typ, binder_info, tag) ->
-                let arg_inf_res = infer_type_elab env arg in
+                let arg_inf_res = infer_type_elab givens env arg in
                 let arg_typ = (
                     apply_subst_term called_inf_res.inf_res_subst
                     (apply_subst_term
