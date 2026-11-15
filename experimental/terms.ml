@@ -30,6 +30,7 @@ type 'a term =
   | TmPrimTy of typ * 'a
   | TmVar of string * 'a
   | TmMeta of string * unit term envt * 'a
+  (* potentially add TmEvidence for typeclass constraints. *)
 
 and 'a term_method_impl =
   | TImplDecl of 'a term

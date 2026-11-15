@@ -407,10 +407,13 @@ and normalize_if_reduced result =
 
 type typed_tag = (sourcespan * (sourcespan term))
 
-type 'a residual_constraint = 
+type 'a residual_constraint =
+    (* find subst where meta = term *)
     | RCUnify of 'a term * 'a term
-    | RCAuto of 'a term
-    | RCWantedTC of unit term * sourcespan
+    (* find substs where meta = term *)
+    | RCAuto of 'a term * 'a term
+    (* create subst where meta = evidence but only if typeclass term exists *)
+    | RCWantedTC of 'a term * unit term * sourcespan
 
 (* for tracking postponed unification *)
 type 'a residual =
@@ -506,7 +509,7 @@ let rec solve_auto (meta: 'a term) (typ: unit term) (span : sourcespan) : (unit 
         search functions in the environment recursively that return the exact type "typ".
     *)
 
-let rec solve_wanted (givens: unit term list) (wanted: 'a term) (span: sourcespan) : unit residual list =
+let rec solve_wanted (meta: 'a term) (givens: unit term list) (wanted: unit term) (span: sourcespan) : (unit term subst * unit residual list) =
     failwith "TODO"
 
 (* 
@@ -653,6 +656,20 @@ let type_synth_terms (p: sourcespan program) =
                 } in
                 let new_new_env = apply_subst_env new_inf_res.inf_res_subst new_env in
                 new_new_env, new_inf_res
+            | TmPi (bound_name, bound_type, return_typ, binder_info, _)
+                when (binder_info.bi_piinfo = Constraint) ->
+                let fresh_meta = TmMeta (gensym "?m", env, (span)) in
+                let new_inf_res = helper env fn_inf_res fresh_meta span in
+                let new_env = apply_subst_env new_inf_res.inf_res_subst env in
+                let new_bound_type = apply_subst_term new_inf_res.inf_res_subst bound_type in
+                let new_subst, new_residuals = solve_wanted fresh_meta givens new_bound_type span in
+                let new_inf_res = {
+                    new_inf_res with
+                    inf_res_subst = compose_subst new_inf_res.inf_res_subst new_subst;
+                    inf_res_residuals = new_residuals @ new_inf_res.inf_res_residuals
+                } in
+                let new_new_env = apply_subst_env new_inf_res.inf_res_subst new_env in
+                new_new_env, new_inf_res
             | _ -> ice "impossible"
         and collect_tail_implicits env (fn_inf_res: (sourcespan * unit term) infer_result) =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
@@ -670,12 +687,8 @@ let type_synth_terms (p: sourcespan program) =
                 collect_tail_implicits new_env new_inf_res
             | TmPi (bound_name, bound_type, return_typ, binder_info, _)
                 when (binder_info.bi_piinfo = Constraint) ->
-                let residuals = solve_wanted givens bound_type span in
-                {
-                    fn_inf_res with
-                    inf_res_inferred_type = return_typ;
-                    inf_res_residuals = residuals @ fn_inf_res.inf_res_residuals
-                }
+                let new_env, new_inf_res = implicit_helper env fn_inf_res in
+                collect_tail_implicits new_env new_inf_res
             | _ -> fn_inf_res
         and insert_implicit_arg env (fn_inf_res: (sourcespan * unit term) infer_result) =
             let fn_type = normalize fn_inf_res.inf_res_inferred_type in
