@@ -577,6 +577,24 @@ let type_synth_terms (p : sourcespan program) =
               bound_typ_inf_res.inf_res_residuals @ return_typ_inf_res.inf_res_residuals;
             inf_res_inferred_type= return_typ_inf_res.inf_res_inferred_type;
             inf_res_subst= new_subst }
+      | TmLambda (bound, bound_type, body, binder_info, tag) ->
+          let bound_typ_inf_res = infer_type_elab givens env bound_type in
+          let new_bound_typ = apply_subst_term bound_typ_inf_res.inf_res_subst bound_typ_inf_res.inf_res_elaborated_term in
+          let body_inf_res = 
+            infer_type_elab 
+            givens 
+            (StringMap.add bound (untag_term new_bound_typ) env) 
+            body in
+          let new_subst = compose_subst bound_typ_inf_res.inf_res_subst body_inf_res.inf_res_subst in
+          let new_body = apply_subst_term new_subst body_inf_res.inf_res_elaborated_term in
+          let body_typ = apply_subst_term new_subst body_inf_res.inf_res_inferred_type in
+          let lam_typ = TmPi(bound, untag_term new_bound_typ, body_typ, binder_info, ()) in
+          {
+            inf_res_elaborated_term = TmLambda (bound, new_bound_typ, new_body, binder_info, (tag, lam_typ));
+            inf_res_residuals = bound_typ_inf_res.inf_res_residuals @ body_inf_res.inf_res_residuals;
+            inf_res_inferred_type = lam_typ;
+            inf_res_subst = new_subst
+          }
       | _ -> failwith "Unsupported term"
     in
     (* insert comp time evaluated ids into inferred type
