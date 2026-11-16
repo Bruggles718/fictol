@@ -96,16 +96,20 @@ let string_of_call_type ct =
   | Prim -> "p"
 ;;
 
-let rec string_of_bind (print_a) (b : 'a bind) : string =
+let rec string_of_bind print_a (b : 'a bind) : string =
   match b with
   | BBlank _ -> "_"
   | BName (name, typ, tag) ->
       name
       ^ ":"
-      ^ (if Option.is_some typ then (string_of_expr_with 1000 print_a (Option.get typ)) else "")
+      ^ ( if Option.is_some typ then
+            string_of_expr_with 1000 print_a (Option.get typ)
+          else
+            "" )
       ^ print_a tag
-and string_of_binding_with (depth : int) (print_a : 'a -> string) ((bind, expr, _) : 'a binding)
-    : string =
+
+and string_of_binding_with (depth : int) (print_a : 'a -> string) ((bind, expr, _) : 'a binding) :
+    string =
   sprintf "%s = %s" (string_of_bind print_a bind) (string_of_expr_with depth print_a expr)
 
 and string_of_piinfo piinfo =
@@ -115,11 +119,9 @@ and string_of_piinfo piinfo =
   | Auto -> "auto "
   | Constraint -> "constraint "
 
-and string_of_fun_param (print_a) (fp) =
+and string_of_fun_param print_a fp =
   match fp with
-  | FPName (name, typ, piinfo, tag) ->
-    (string_of_bind print_a (BName(name, Some(typ), tag)))
-
+  | FPName (name, typ, piinfo, tag) -> string_of_bind print_a (BName (name, Some typ, tag))
 
 (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
 
@@ -192,18 +194,23 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
 
-let string_of_func_sig_with depth print_a fun_sig
-    =
-  let implicit_args = List.filter (fun fp -> 
-    match fp with
-    | FPName(_, _, Implicit, _) -> true
-    | _ -> false)
-    fun_sig.fparams in
-  let explicit_args = List.filter (fun fp -> 
-    match fp with
-    | FPName(_, _, Explicit, _) -> true
-    | _ -> false)
-    fun_sig.fparams in
+let string_of_func_sig_with depth print_a fun_sig =
+  let implicit_args =
+    List.filter
+      (fun fp ->
+        match fp with
+        | FPName (_, _, Implicit, _) -> true
+        | _ -> false )
+      fun_sig.fparams
+  in
+  let explicit_args =
+    List.filter
+      (fun fp ->
+        match fp with
+        | FPName (_, _, Explicit, _) -> true
+        | _ -> false )
+      fun_sig.fparams
+  in
   sprintf "(def %s%s(%s)%s%s)%s" fun_sig.fname
     (let gens = ExtString.String.join ", " (List.map (string_of_fun_param print_a) implicit_args) in
      if List.length implicit_args > 0 then
@@ -211,7 +218,7 @@ let string_of_func_sig_with depth print_a fun_sig
      else
        gens )
     (ExtString.String.join ", " (List.map (string_of_fun_param print_a) explicit_args))
-    (let typ_str = (string_of_expr_with 1000 print_a (fun_sig.fret_type)) in
+    (let typ_str = string_of_expr_with 1000 print_a fun_sig.fret_type in
      if String.length typ_str <= 0 then
        ""
      else
@@ -230,8 +237,7 @@ let rec string_of_impl_decl_with depth print_a impl_d =
 
 and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : string =
   match d with
-  | DFun (fun_sig) ->
-      string_of_func_sig_with depth print_a fun_sig
+  | DFun fun_sig -> string_of_func_sig_with depth print_a fun_sig
   | DClass (name, params, superclasses, method_sigs, a) ->
       sprintf "(typeclass %s%s%s:\n  %s)%s" name
         (let gens = ExtString.String.join ", " (List.map (string_of_fun_param print_a) params) in
@@ -247,10 +253,7 @@ and string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : s
          else
            "" )
         (ExtString.String.join "\n  "
-           (List.map
-              (fun ms ->
-                string_of_func_sig_with depth print_a ms )
-              method_sigs ) )
+           (List.map (fun ms -> string_of_func_sig_with depth print_a ms) method_sigs) )
         (print_a a)
   | DInstance (generics, head, method_impls, a) ->
       sprintf "(instance%s %s:\n  %s)%s"

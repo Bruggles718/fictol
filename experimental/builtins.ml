@@ -15,34 +15,31 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let uwidths = [U8; U16; U32; U64] in *)
   (* let int_types = List.map (fun w -> TyCon (Int w)) widths in
   let int_types = int_types @ List.map (fun w -> TyCon (UInt w)) uwidths in *)
-  let type_type = EId("Type", dummy_span) in
-  let int_types = [
-    "i8"; "i16"; "i32"; "i64";
-    "u8"; "u16"; "u32"; "u64";
-  ] in
-  let int_types = List.map (fun s -> EId(s, dummy_span)) int_types in
+  let type_type = EId ("Type", dummy_span) in
+  let int_types = ["i8"; "i16"; "i32"; "i64"; "u8"; "u16"; "u32"; "u64"] in
+  let int_types = List.map (fun s -> EId (s, dummy_span)) int_types in
   (* let self = TyVar "Self" in *)
-  let self = EId("Self", dummy_span) in
-  let params_self = [(FPName("Self", type_type, Explicit, dummy_span))] in
+  let self = EId ("Self", dummy_span) in
+  let params_self = [FPName ("Self", type_type, Explicit, dummy_span)] in
   let make_arg name typ = FPName (name, typ, Explicit, dummy_span) in
   let make_prim2_method name ret_typ =
     { fname= name;
       fparams= [make_arg "a" self; make_arg "b" self];
       fbody= None;
-      fret_type=self;
-      fcall_type=FictolFunc;
+      fret_type= self;
+      fcall_type= FictolFunc;
       ftag= dummy_span }
   in
   let make_prim1_method name ret_typ =
     { fname= name;
       fparams= [make_arg "a" self];
       fbody= None;
-      fret_type=self;
-      fcall_type=FictolFunc;
+      fret_type= self;
+      fcall_type= FictolFunc;
       ftag= dummy_span }
   in
   let make_math_method name = make_prim2_method name self in
-  let make_superclass name typs = EApp(EId(name, dummy_span), typs, dummy_span) in
+  let make_superclass name typs = EApp (EId (name, dummy_span), typs, dummy_span) in
   let make_class name params superclasses methods =
     DClass (name, params, superclasses, methods, dummy_span)
   in
@@ -59,28 +56,30 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
   let not_class = make_class "Not" params_self [] [make_prim1_method "not" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" t_bool] in
-  let deref_class = make_class "Deref" params_self [] [
-    {
-      fname = "deref";
-      fparams = [(FPName("R", EId("Region", dummy_span), Implicit, dummy_span)); make_arg "a" (EApp(EId("ref", dummy_span), [self; EId("R", dummy_span)], dummy_span))];
-      (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
-      fbody = None;
-      fret_type = self;
-      fcall_type = FictolFunc;
-      ftag = dummy_span;
-    }
-  ] in
-  let ref_class = make_class "Ref" params_self [] [
-    {
-      fname = "ref";
-      fparams = [(FPName("R", EId("Region", dummy_span), Implicit, dummy_span)); make_arg "a" self];
-      (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
-      fbody = None;
-      fret_type = (EApp(EId("ref", dummy_span), [self; EId("R", dummy_span)], dummy_span));
-      fcall_type = FictolFunc;
-      ftag = dummy_span;
-    }
-  ] in
+  let deref_class =
+    make_class "Deref" params_self []
+      [ { fname= "deref";
+          fparams=
+            [ FPName ("R", EId ("Region", dummy_span), Implicit, dummy_span);
+              make_arg "a"
+                (EApp (EId ("ref", dummy_span), [self; EId ("R", dummy_span)], dummy_span)) ];
+          (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
+          fbody= None;
+          fret_type= self;
+          fcall_type= FictolFunc;
+          ftag= dummy_span } ]
+  in
+  let ref_class =
+    make_class "Ref" params_self []
+      [ { fname= "ref";
+          fparams=
+            [FPName ("R", EId ("Region", dummy_span), Implicit, dummy_span); make_arg "a" self];
+          (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
+          fbody= None;
+          fret_type= EApp (EId ("ref", dummy_span), [self; EId ("R", dummy_span)], dummy_span);
+          fcall_type= FictolFunc;
+          ftag= dummy_span } ]
+  in
   let ord_class =
     make_class "Ord" params_self
       [make_superclass "Eq" [self]]
@@ -129,7 +128,7 @@ let add_builtins (p : sourcespan program) : sourcespan program =
     | _ -> ice "not class, what??"
   in
   let inst_generic_prim cls =
-    let typ = EId("T", dummy_span) in
+    let typ = EId ("T", dummy_span) in
     match cls with
     | DClass (name, params, superclasses, method_sigs, dummy_span) ->
         let method_impls =
@@ -143,7 +142,11 @@ let add_builtins (p : sourcespan program) : sourcespan program =
                 ImplPrim1 prim_op )
             method_sigs
         in
-        DInstance ([(FPName("T", type_type, Explicit, dummy_span))], make_superclass name [typ], method_impls, dummy_span)
+        DInstance
+          ( [FPName ("T", type_type, Explicit, dummy_span)],
+            make_superclass name [typ],
+            method_impls,
+            dummy_span )
     | _ -> ice "not class, what??"
   in
   let instances =
@@ -160,8 +163,12 @@ let add_builtins (p : sourcespan program) : sourcespan program =
       (List.map (fun cls -> (cls, non_numeric_typs)) non_numeric_classes)
     |> List.concat
   in
-  let not_instance = inst_prim_for_typ not_class (t_bool) in
+  let not_instance = inst_prim_for_typ not_class t_bool in
   let ref_instance = inst_generic_prim ref_class in
   match p with
-  | Program (decls, loc) -> Program ([not_class; ref_class] @ built_in_classes @ instances @ non_numeric_instances @ [not_instance; ref_instance] @ decls, loc)
+  | Program (decls, loc) ->
+      Program
+        ( [not_class; ref_class] @ built_in_classes @ instances @ non_numeric_instances
+          @ [not_instance; ref_instance] @ decls,
+          loc )
 ;;

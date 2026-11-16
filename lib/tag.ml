@@ -13,7 +13,7 @@ open Typecheck
 
 let tag_span_prog (p : sourcespan program) : (tag * sourcespan) program =
   let next = ref 0 in
-  let tag (span) =
+  let tag span =
     next := !next + 1;
     (!next, span)
   in
@@ -29,15 +29,14 @@ let tag_span_typ_prog (p : (sourcespan * typ) program) : (tag * typ) program =
   map_tags_program tag p
 ;;
 
-let untag_tag_span_prog (p: (tag * sourcespan) program) : sourcespan program =
+let untag_tag_span_prog (p : (tag * sourcespan) program) : sourcespan program =
   let untag (tag, span) = span in
   map_tags_program untag p
-
-let tag_other_gensym name ((tag, _) : tag * 'a) =
-  sprintf "%s_%d" name tag
 ;;
 
-let rename (rename_with_tag: string -> 'a -> string) (p : 'a program) : 'a program =
+let tag_other_gensym name ((tag, _) : tag * 'a) = sprintf "%s_%d" name tag
+
+let rename (rename_with_tag : string -> 'a -> string) (p : 'a program) : 'a program =
   let rec helpP env p =
     match p with
     | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
@@ -102,9 +101,14 @@ let rename (rename_with_tag: string -> 'a -> string) (p : 'a program) : 'a progr
         ELet (binds', body', tag)
     | EGetReference (body, tag) -> EGetReference (helpE env body, tag)
     | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
-      let new_ref_name = rename_with_tag ref_name tag in
-      EBorrow (helpE env borrowed_expr, new_ref_name, region, helpE ((ref_name, new_ref_name) :: env) body, tag)
-    | _ -> ice (sprintf "Rename: unsupported expr %s" (string_of_expr e)) 
+        let new_ref_name = rename_with_tag ref_name tag in
+        EBorrow
+          ( helpE env borrowed_expr,
+            new_ref_name,
+            region,
+            helpE ((ref_name, new_ref_name) :: env) body,
+            tag )
+    | _ -> ice (sprintf "Rename: unsupported expr %s" (string_of_expr e))
   in
   helpP [] p
 ;;

@@ -278,7 +278,7 @@ let compile_prog context the_module builder (prog : (tag * typ) aprogram) : stri
     match (op, typ) with
     | Neg, _ -> build_neg
     | Not, _ -> build_not
-    | Deref, (TyApp(TyCon(Reference), [ref_typ; _])) -> build_load (typ_to_llvm_typ context ref_typ)
+    | Deref, TyApp (TyCon Reference, [ref_typ; _]) -> build_load (typ_to_llvm_typ context ref_typ)
     | _ ->
         ice
           (sprintf "unsupported prim1 to llvm op %s for typ %s" (string_of_op1 op)

@@ -34,8 +34,7 @@ and piinfo =
   | Auto
   | Constraint
 
-and 'a fun_param =
-  | FPName of string * 'a expr * piinfo * 'a
+and 'a fun_param = FPName of string * 'a expr * piinfo * 'a
 
 and 'a binding = 'a bind * 'a expr * 'a
 
@@ -68,7 +67,7 @@ and 'a expr =
   (* | EString of string * 'a *)
   (* | ETyApp of 'a expr * typ list * 'a *)
   | EBorrow of 'a expr * string * string * 'a expr * 'a
-    (* expr to borrow, name to bind it as, name of region, body, tag *)
+(* expr to borrow, name to bind it as, name of region, body, tag *)
 
 (* and 'a method_sig =
   { ms_name: string;
@@ -79,14 +78,12 @@ and 'a expr =
     ms_span: 'a } *)
 
 and 'a fun_sig =
-  {
-    fname: string;
+  { fname: string;
     fparams: 'a fun_param list;
     fbody: 'a expr option;
     fcall_type: call_type;
     fret_type: 'a expr;
-    ftag: 'a;
-  }
+    ftag: 'a }
 
 type 'a decl =
   | DFun of 'a fun_sig

@@ -20,7 +20,7 @@ let tag_of_expr (e : 'a expr) : 'a =
    |ELiteral (_, t)
    |EId (_, t)
    |EApp (_, _, t)
-  | EBorrow (_, _, _, _, t) -> t
+   |EBorrow (_, _, _, _, t) -> t
 ;;
 
 let type_of_expr (e : typed_tag expr) : typ = snd (tag_of_expr e)
@@ -51,9 +51,8 @@ let rec map_tags_expr (f : 'a -> 'b) (e : 'a expr) : 'b expr =
 and map_tags_bind (f : 'a -> 'b) (b : 'a bind) : 'b bind =
   match b with
   | BBlank tag -> BBlank (f tag)
-  | BName (name, Some(typ), tag) -> BName (name, (Some(map_tags_expr f typ)), f tag)
+  | BName (name, Some typ, tag) -> BName (name, Some (map_tags_expr f typ), f tag)
   | BName (name, None, tag) -> BName (name, None, f tag)
-
 
 and map_tags_fun_param (f : 'a -> 'b) (b : 'a fun_param) : 'b fun_param =
   match b with
@@ -71,12 +70,14 @@ let map_tags_fun_sig (f : 'a -> 'b) (fs : 'a fun_sig) : 'b fun_sig =
 
 let rec map_tags_decl (f : 'a -> 'b) (d : 'a decl) : 'b decl =
   match d with
-  | DFun (fs) ->
-      DFun
-        ( map_tags_fun_sig f fs )
+  | DFun fs -> DFun (map_tags_fun_sig f fs)
   | DClass (name, params, supers, sigs, tag) ->
       DClass
-        (name, List.map (map_tags_fun_param f) params, List.map (map_tags_expr f) supers, List.map (map_tags_fun_sig f) sigs, f tag)
+        ( name,
+          List.map (map_tags_fun_param f) params,
+          List.map (map_tags_expr f) supers,
+          List.map (map_tags_fun_sig f) sigs,
+          f tag )
   | DInstance (generics, head, impls, tag) ->
       DInstance
         ( List.map (map_tags_fun_param f) generics,
@@ -98,7 +99,7 @@ let map_tags_program (f : 'a -> 'b) (p : 'a program) : 'b program =
 
 let tag_span_prog (p : sourcespan program) : (tag * sourcespan) program =
   let next = ref 0 in
-  let tag (span: sourcespan) : (tag * sourcespan) =
+  let tag (span : sourcespan) : tag * sourcespan =
     next := !next + 1;
     (!next, span)
   in
@@ -114,71 +115,55 @@ let tag_span_typ_prog (p : (sourcespan * typ) program) : (tag * typ) program =
   map_tags_program tag p
 ;;
 
-let untag_tag_span_prog (p: (tag * sourcespan) program) : sourcespan program =
+let untag_tag_span_prog (p : (tag * sourcespan) program) : sourcespan program =
   let untag (tag, span) = span in
   map_tags_program untag p
-
-let tag_other_gensym name ((tag, _) : tag * 'a) =
-  sprintf "%s_%d" name tag
 ;;
+
+let tag_other_gensym name ((tag, _) : tag * 'a) = sprintf "%s_%d" name tag
 
 let rename (rename_with_tag : string -> 'a -> string) (p : 'a program) : 'a program =
   let rec helpP env p =
     match p with
-    | Program (decls, tag) ->
-        Program (List.map (helpD env) decls, tag)
-
+    | Program (decls, tag) -> Program (List.map (helpD env) decls, tag)
   and helpD env decl =
     match decl with
     | DFun fs ->
         let new_params, env' = helpFPs env fs.fparams in
-        DFun {
-          fs with
-          fparams = new_params;
-          fret_type = helpE env' fs.fret_type;
-          fbody = Option.map (helpE env') fs.fbody;
-        }
-
+        DFun
+          { fs with
+            fparams= new_params;
+            fret_type= helpE env' fs.fret_type;
+            fbody= Option.map (helpE env') fs.fbody }
     | DClass (name, params, constraints, methods, tag) ->
         let new_class_params, new_env = helpFPs env params in
-        DClass (
-          name,
-          new_class_params,
-          List.map (helpE new_env) constraints,
-          List.map (fun fs ->
-            let new_params, env' = helpFPs new_env fs.fparams in
-            {
-              fs with
-              fparams = new_params;
-              fret_type = helpE env' fs.fret_type;
-              fbody = Option.map (helpE env') fs.fbody;
-            }
-          ) methods,
-          tag
-        )
-
+        DClass
+          ( name,
+            new_class_params,
+            List.map (helpE new_env) constraints,
+            List.map
+              (fun fs ->
+                let new_params, env' = helpFPs new_env fs.fparams in
+                { fs with
+                  fparams= new_params;
+                  fret_type= helpE env' fs.fret_type;
+                  fbody= Option.map (helpE env') fs.fbody } )
+              methods,
+            tag )
     | DInstance (params, constraint_expr, methods, tag) ->
         let params', env' = helpFPs env params in
-        DInstance (
-          params',
-          helpE env' constraint_expr,
-          List.map (helpMethodImpl env') methods,
-          tag
-        )
+        DInstance (params', helpE env' constraint_expr, List.map (helpMethodImpl env') methods, tag)
   and helpMethodImpl env meth =
     match meth with
-    | ImplDecl(decl) -> ImplDecl(helpD env decl)
+    | ImplDecl decl -> ImplDecl (helpD env decl)
     | ImplPrim1 _ | ImplPrim2 _ -> meth
   and helpB env b =
     match b with
-    | BBlank tag ->
-        (b, env)
-
+    | BBlank tag -> (b, env)
     | BName (name, annotation, tag) ->
         let annotation' = Option.map (helpE env) annotation in
         let name' = rename_with_tag name tag in
         (BName (name', annotation', tag), (name, name') :: env)
-
   (* and helpBS env (bs : 'a bind list) =
     match bs with
     | [] ->
@@ -188,75 +173,42 @@ let rename (rename_with_tag : string -> 'a -> string) (p : 'a program) : 'a prog
         let b', env' = helpB env b in
         let bs', env'' = helpBS env' bs in
         (b' :: bs', env'') *)
-
   and helpFP env (FPName (name, typ, info, tag)) =
     let typ' = helpE env typ in
     let name' = rename_with_tag name tag in
     (FPName (name', typ', info, tag), (name, name') :: env)
-
   and helpFPs env (params : 'a fun_param list) =
     match params with
-    | [] ->
-        ([], env)
-
+    | [] -> ([], env)
     | param :: params ->
         let param', env' = helpFP env param in
         let params', env'' = helpFPs env' params in
         (param' :: params', env'')
-
   and helpBG env (bindings : 'a binding list) =
     match bindings with
-    | [] ->
-        ([], env)
-
+    | [] -> ([], env)
     | (b, e, a) :: bindings ->
         let b', env' = helpB env b in
         let e' = helpE env e in
         let bindings', env'' = helpBG env' bindings in
         ((b', e', a) :: bindings', env'')
-
   and helpE env e =
     match e with
-    | ESeq (e1, e2, tag) ->
-        ESeq (helpE env e1, helpE env e2, tag)
-
-    | EPrim1 (op, arg, tag) ->
-        EPrim1 (op, helpE env arg, tag)
-
-    | EPrim2 (op, left, right, tag) ->
-        EPrim2 (op, helpE env left, helpE env right, tag)
-
-    | EIf (c, t, f, tag) ->
-        EIf (helpE env c, helpE env t, helpE env f, tag)
-
-    | ELiteral _ ->
-        e
-
-    | EId (name, tag) ->
-        (try EId (List.assoc name env, tag)
-         with Not_found -> e)
-
-    | EApp (func, args, tag) ->
-        EApp (
-          helpE env func,
-          List.map (helpE env) args,
-          tag
-        )
-
+    | ESeq (e1, e2, tag) -> ESeq (helpE env e1, helpE env e2, tag)
+    | EPrim1 (op, arg, tag) -> EPrim1 (op, helpE env arg, tag)
+    | EPrim2 (op, left, right, tag) -> EPrim2 (op, helpE env left, helpE env right, tag)
+    | EIf (c, t, f, tag) -> EIf (helpE env c, helpE env t, helpE env f, tag)
+    | ELiteral _ -> e
+    | EId (name, tag) -> ( try EId (List.assoc name env, tag) with Not_found -> e )
+    | EApp (func, args, tag) -> EApp (helpE env func, List.map (helpE env) args, tag)
     | ELet (bindings, body, tag) ->
         let bindings', env' = helpBG env bindings in
         ELet (bindings', helpE env' body, tag)
-
     | EBorrow (borrowed_expr, ref_name, region, body, tag) ->
         let borrowed_expr' = helpE env borrowed_expr in
         let new_ref_name = rename_with_tag ref_name tag in
-        EBorrow (
-          borrowed_expr',
-          new_ref_name,
-          region,
-          helpE ((ref_name, new_ref_name) :: env) body,
-          tag
-        )
+        EBorrow
+          (borrowed_expr', new_ref_name, region, helpE ((ref_name, new_ref_name) :: env) body, tag)
   in
   helpP [] p
 ;;

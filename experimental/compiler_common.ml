@@ -30,13 +30,13 @@ let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
      - everything else (BBlank, generic binders, DClass, DInstance, Program, ...):
        TyBlank, because there is no useful type. *)
 
-let t_bool = EId("bool", dummy_span)
+let t_bool = EId ("bool", dummy_span)
 
 (* let t_str =
   TyApp (TyCon Reference, [TyCon Char; TyApp (TyCon Region, [TyCon (RegionName "Static")])])
 ;; *)
 
-let t_char = EId("char", dummy_span)
+let t_char = EId ("char", dummy_span)
 
 let rec find ls x =
   match ls with
@@ -94,7 +94,7 @@ exception CyclicSuperclass of string * sourcespan *)
 
 (* See notes in exprs.ml. Continue after making those determinations *)
 
-type elab_term_tag = (sourcespan * (sourcespan term))
+type elab_term_tag = sourcespan * sourcespan term
 
 let class_table : (string, sourcespan class_info) Hashtbl.t = Hashtbl.create 8
 (* class name -> info *)
@@ -104,7 +104,10 @@ let instance_table : (string, sourcespan instance_info list) Hashtbl.t = Hashtbl
 (* class name -> all instances of that class. This replaces your commented-out
    `classes` / `instances`. Concrete `sourcespan` instead of `'a` avoids weak
    type variables on a top-level Hashtbl. *)
-let method_impl_table : (string * string, elab_term_tag term_method_impl) Hashtbl.t = Hashtbl.create 32
+let method_impl_table : (string * string, elab_term_tag term_method_impl) Hashtbl.t =
+  Hashtbl.create 32
+;;
+
 (* (instance_id, method name) -> implementation *)
 
 let default_method_table : (string * string, sourcespan term) Hashtbl.t = Hashtbl.create 16
@@ -148,7 +151,7 @@ let overloaded_prim1 (op : prim1) : (string * string) option =
   (* Neg |-> Some ("Neg", "neg"); everything else None. *)
   match op with
   | Neg -> Some ("Neg", "neg")
-  | Deref -> Some("Deref", "deref")
+  | Deref -> Some ("Deref", "deref")
   | _ -> None
 ;;
 

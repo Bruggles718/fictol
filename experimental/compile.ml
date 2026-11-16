@@ -37,7 +37,8 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   prog
   |> add_phase add_builtins_phase add_builtins
   (* |> add_err_phase well_formed is_well_formed *)
-  |> add_phase desugared (fun p ->  desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p))))
+  |> add_phase desugared (fun p ->
+      desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p))) )
   (* |> add_phase desugared desugar *)
   (* |> add_phase desugared (fun p ->  desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p)))) *)
   (* could potentially lead to confusing traces, but ultimately prevents shadowing built in 
@@ -47,7 +48,7 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   |> add_phase tagged tag_span_typ_prog
   |> add_phase renamed (rename tag_other_gensym)
   |> add_phase anfed (fun p -> atag_prog (anf p)) *)
-  |> add_phase result (compile_prog)
+  |> add_phase result compile_prog
 ;;
 (* prog *)
 (* |> add_err_phase well_formed is_well_formed

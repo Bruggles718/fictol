@@ -157,7 +157,7 @@ let overloaded_prim1 (op : prim1) : (string * string) option =
   (* Neg |-> Some ("Neg", "neg"); everything else None. *)
   match op with
   | Neg -> Some ("Neg", "neg")
-  | Deref -> Some("Deref", "deref")
+  | Deref -> Some ("Deref", "deref")
   | _ -> None
 ;;
 
@@ -228,17 +228,16 @@ let add_builtins (p : sourcespan program) : sourcespan program =
   in
   let neg_class = make_class "Neg" params_self [] [make_prim1_method "neg" self] in
   let eq_class = make_class "Eq" params_self [] [make_prim2_method "eq" t_bool] in
-  let deref_class = make_class "Deref" params_self [] [
-    {
-      ms_name = "deref";
-      ms_generics = [(GBName("R", [], dummy_span))];
-      (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
-      ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; TyVar("R")]))];
-      ms_ret = self;
-      ms_default = None;
-      ms_span = dummy_span
-    }
-  ] in
+  let deref_class =
+    make_class "Deref" params_self []
+      [ { ms_name= "deref";
+          ms_generics= [GBName ("R", [], dummy_span)];
+          (* ms_args = [make_arg "a" (TyApp(TyCon(Reference), [self; (TyApp(TyCon(Region), [TyVar("T")]))]))]; *)
+          ms_args= [make_arg "a" (TyApp (TyCon Reference, [self; TyVar "R"]))];
+          ms_ret= self;
+          ms_default= None;
+          ms_span= dummy_span } ]
+  in
   let ord_class =
     make_class "Ord" params_self
       [make_superclass "Eq" [self]]
@@ -299,5 +298,6 @@ let add_builtins (p : sourcespan program) : sourcespan program =
     |> List.concat
   in
   match p with
-  | Program (decls, loc) -> Program (built_in_classes @ instances @ non_numeric_instances @ decls, loc)
+  | Program (decls, loc) ->
+      Program (built_in_classes @ instances @ non_numeric_instances @ decls, loc)
 ;;

@@ -34,7 +34,8 @@ let compile_to_string (module_name : string) (prog : sourcespan program pipeline
   |> add_phase add_builtins_phase add_builtins
   |> add_err_phase well_formed is_well_formed
   (* |> add_phase desugared desugar *)
-  |> add_phase desugared (fun p ->  desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p))))
+  |> add_phase desugared (fun p ->
+      desugar (untag_tag_span_prog (rename tag_other_gensym (tag_span_prog p))) )
   (* could potentially lead to confusing traces, but ultimately prevents shadowing built in 
     prim method names from breaking the program when desugaring. May try to think of a better solution to this. *)
   |> add_err_phase type_checked type_synth_tc
