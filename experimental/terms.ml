@@ -30,7 +30,7 @@ type 'a term =
   | TmPrimTy of typ * 'a
   | TmVar of string * 'a
   | TmMeta of string * unit term envt * 'a
-  (* potentially add TmEvidence for typeclass constraints. *)
+  | TmEvidence of 'a term * 'a
 
 and 'a term_method_impl =
   | TImplDecl of 'a term
@@ -100,6 +100,7 @@ let rec tag_term (tag : 'a) (tm : 'b term) : 'a term =
   | TmPrimTy (typ, _) -> TmPrimTy (typ, tag)
   | TmVar (name, _) -> TmVar (name, tag)
   | TmMeta (name, context, _) -> TmMeta (name, context, tag)
+  | TmEvidence (evidence_of, _) -> TmEvidence(tag_term tag evidence_of, tag)
 
 let rec untag_term (tm : 'a term) : unit term =
   match tm with
@@ -130,6 +131,7 @@ let rec untag_term (tm : 'a term) : unit term =
       TmVar (name, ())
   | TmMeta (name, context, _) ->
       TmMeta (name, context, ())
+  | TmEvidence (evidence_of, _) -> TmEvidence(untag_term evidence_of, ())
 
 let tag_of_term (tm : 'a term) : 'a =
   match tm with
@@ -145,6 +147,7 @@ let tag_of_term (tm : 'a term) : 'a =
   | TmPrimTy (_, tag)
   | TmVar (_, tag)
   | TmMeta (_, _, tag) -> tag
+  | TmEvidence(_, tag) -> tag
 
 let rec map_term (f : 'a term -> 'b term) (tm : 'a term) : 'b term =
   let tm' =
@@ -174,5 +177,6 @@ let rec map_term (f : 'a term -> 'b term) (tm : 'a term) : 'b term =
         TmVar (name, tag)
     | TmMeta (name, context, tag) ->
         TmMeta (name, context, tag)
+    | TmEvidence (evidence_of, tag) -> TmEvidence(map_term f evidence_of, tag)
   in
   f tm'

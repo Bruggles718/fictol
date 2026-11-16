@@ -16,18 +16,20 @@ let rec tm_free_vars tm =
   | TmIf (cond, thn, els, tag) -> tm_free_vars cond @ tm_free_vars thn @ tm_free_vars els
   | TmPrim1 (op, body, tag) -> tm_free_vars body
   | TmPrim2 (op, lhs, rhs, tag) -> tm_free_vars lhs @ tm_free_vars rhs
+  | TmEvidence (evidence_of, tag) -> tm_free_vars evidence_of
   | TmUniverse _ | TmLiteral _ | TmPrimTy _ | TmMeta _ -> []
 ;;
 
 let rec tm_meta_vars tm =
   match tm with
   | TmMeta (x, scope, tag) -> [x]
-  | TmApp (m, n, app_boundary, tag) -> tm_free_vars m @ tm_free_vars n
+  | TmApp (m, n, app_boundary, tag) -> tm_meta_vars m @ tm_meta_vars n
   | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) | TmLet (x, a, m, tag) ->
-      tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
-  | TmIf (cond, thn, els, tag) -> tm_free_vars cond @ tm_free_vars thn @ tm_free_vars els
-  | TmPrim1 (op, body, tag) -> tm_free_vars body
-  | TmPrim2 (op, lhs, rhs, tag) -> tm_free_vars lhs @ tm_free_vars rhs
+      tm_meta_vars a @ List.filter (( <> ) x) (tm_meta_vars m)
+  | TmIf (cond, thn, els, tag) -> tm_meta_vars cond @ tm_meta_vars thn @ tm_meta_vars els
+  | TmPrim1 (op, body, tag) -> tm_meta_vars body
+  | TmPrim2 (op, lhs, rhs, tag) -> tm_meta_vars lhs @ tm_meta_vars rhs
+  | TmEvidence (evidence_of, tag) -> tm_meta_vars evidence_of
   | TmUniverse _ | TmLiteral _ | TmPrimTy _ | TmVar _ -> []
 ;;
 
@@ -39,6 +41,7 @@ let rec binders tm =
   | TmIf (cond, thn, els, tag) -> binders cond @ binders thn @ binders els
   | TmPrim1 (op, body, tag) -> binders body
   | TmPrim2 (op, lhs, rhs, tag) -> binders lhs @ binders rhs
+  | TmEvidence (evidence_of, tag) -> binders evidence_of
   | TmUniverse _ | TmLiteral _ | TmVar _ | TmMeta _ | TmPrimTy _ -> []
 ;;
 
@@ -73,6 +76,7 @@ let rec subst_vars_in_term x m tm =
   | TmIf (cond, thn, els, tag) -> TmIf (subst_vars_in_term x m cond, subst_vars_in_term x m thn, subst_vars_in_term x m els, tag)
   | TmPrim1 (op, body, tag) -> TmPrim1 (op, subst_vars_in_term x m body, tag)
   | TmPrim2 (op, lhs, rhs, tag) -> TmPrim2 (op, subst_vars_in_term x m lhs, subst_vars_in_term x m rhs, tag)
+  | TmEvidence (evidence_of, tag) -> TmEvidence (subst_vars_in_term x m evidence_of, tag)
   | TmLiteral _ | TmVar _ | TmUniverse _ | TmPrimTy _ | TmMeta _ -> tm
 
 and rename x' binder =
@@ -100,6 +104,7 @@ let rec subst_metas_in_term x (m: unit term) (tm: 'a term) : ('a term) =
   | TmPrim1 (op, body, tag) -> TmPrim1 (op, subst_metas_in_term x m body, tag)
   | TmPrim2 (op, lhs, rhs, tag) ->
       TmPrim2 (op, subst_metas_in_term x m lhs, subst_metas_in_term x m rhs, tag)
+  | TmEvidence (evidence_of, tag) -> TmEvidence (subst_metas_in_term x m evidence_of, tag)
   | TmLiteral _ | TmVar _ | TmUniverse _ | TmPrimTy _ | TmMeta _ -> tm
 ;;
 
@@ -334,7 +339,9 @@ let rec whnf tm =
   | TmPrim1 (op, body, tag) ->
       let result = whnf body in
       { result with nr_term = TmPrim1 (op, result.nr_term, tag) }
-
+  | TmEvidence (evidence_of, tag) ->
+        let result = whnf evidence_of in
+        { result with nr_term = TmEvidence (result.nr_term, tag) }
   | TmLambda _ | TmPi _
   | TmLiteral _ | TmVar _ | TmUniverse _
   | TmMeta _ | TmPrimTy _ ->
@@ -385,6 +392,10 @@ let rec normalize tm =
       merge_results result.nr_term [head; body; result]
   | TmLet (x, value, body, _) ->
       normalize (subst_vars_in_term x value body)
+  | TmEvidence (evidence_of, tag) ->
+      let body = normalize evidence_of in
+      let result = whnf (TmEvidence (body.nr_term, tag)) in
+      merge_results result.nr_term [head; body; result]
   | (TmLiteral _ | TmVar _ | TmUniverse _
     | TmMeta _ | TmPrimTy _) ->
       head
