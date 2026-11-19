@@ -292,7 +292,7 @@ let rec whnf tm =
       empty_result tm
 ;;
 
-(* Update this to return info for determining Resolved or Stuck. Maybe WHNF needs updating too? *)
+(* IDEA: Consider normalize taking in an env and replacing TmVar with the value in the env? *)
 let rec normalize tm =
   let head = whnf tm in
   let tm = head.nr_term in
