@@ -18,7 +18,7 @@ type 'a term =
   | TmUniverse of int * 'a
   | TmPi of string * 'a term * 'a term * binder_info * 'a
   | TmLambda of string * 'a term * 'a term * binder_info * 'a
-  | TmLet of string * 'a term * 'a term * 'a
+  | TmLet of string * 'a term * 'a term * 'a term * 'a
   | TmApp of 'a term * 'a term * app_boundary * 'a
   | TmPrim1 of prim1 * 'a term * 'a
   | TmPrim2 of prim2 * 'a term * 'a term * 'a
@@ -77,7 +77,7 @@ let rec tag_term (tag : 'a) (tm : 'b term) : 'a term =
       TmPi (name, tag_term tag domain, tag_term tag codomain, binder_info, tag)
   | TmLambda (name, domain, body, binder_info, _) ->
       TmLambda (name, tag_term tag domain, tag_term tag body, binder_info, tag)
-  | TmLet (name, value, body, _) -> TmLet (name, tag_term tag value, tag_term tag body, tag)
+  | TmLet (name, typ, value, body, _) -> TmLet (name, tag_term tag typ, tag_term tag value, tag_term tag body, tag)
   | TmApp (fn, arg, app_boundary, _) -> TmApp (tag_term tag fn, tag_term tag arg, app_boundary, tag)
   | TmPrim1 (op, arg, _) -> TmPrim1 (op, tag_term tag arg, tag)
   | TmPrim2 (op, lhs, rhs, _) -> TmPrim2 (op, tag_term tag lhs, tag_term tag rhs, tag)
@@ -97,7 +97,7 @@ let rec untag_term (tm : 'a term) : unit term =
       TmPi (name, untag_term domain, untag_term codomain, binder_info, ())
   | TmLambda (name, domain, body, binder_info, _) ->
       TmLambda (name, untag_term domain, untag_term body, binder_info, ())
-  | TmLet (name, value, body, _) -> TmLet (name, untag_term value, untag_term body, ())
+  | TmLet (name, typ, value, body, _) -> TmLet (name, untag_term typ, untag_term value, untag_term body, ())
   | TmApp (fn, arg, app_boundary, _) -> TmApp (untag_term fn, untag_term arg, app_boundary, ())
   | TmPrim1 (op, arg, _) -> TmPrim1 (op, untag_term arg, ())
   | TmPrim2 (op, lhs, rhs, _) -> TmPrim2 (op, untag_term lhs, untag_term rhs, ())
@@ -115,7 +115,7 @@ let tag_of_term (tm : 'a term) : 'a =
   | TmUniverse (_, tag)
    |TmPi (_, _, _, _, tag)
    |TmLambda (_, _, _, _, tag)
-   |TmLet (_, _, _, tag)
+   |TmLet (_, _, _, _, tag)
    |TmApp (_, _, _, tag)
    |TmPrim1 (_, _, tag)
    |TmPrim2 (_, _, _, tag)
@@ -135,7 +135,7 @@ let rec map_term (f : 'a term -> 'b term) (tm : 'a term) : 'b term =
         TmPi (name, map_term f domain, map_term f codomain, binder_info, tag)
     | TmLambda (name, domain, body, binder_info, tag) ->
         TmLambda (name, map_term f domain, map_term f body, binder_info, tag)
-    | TmLet (name, value, body, tag) -> TmLet (name, map_term f value, map_term f body, tag)
+    | TmLet (name, typ, value, body, tag) -> TmLet (name, map_term f typ, map_term f value, map_term f body, tag)
     | TmApp (fn, arg, app_boundary, tag) -> TmApp (map_term f fn, map_term f arg, app_boundary, tag)
     | TmPrim1 (op, arg, tag) -> TmPrim1 (op, map_term f arg, tag)
     | TmPrim2 (op, lhs, rhs, tag) -> TmPrim2 (op, map_term f lhs, map_term f rhs, tag)

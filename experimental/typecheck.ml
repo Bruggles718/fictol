@@ -11,8 +11,10 @@ let rec tm_free_vars tm =
   match tm with
   | TmVar (x, tag) -> [x]
   | TmApp (m, n, app_boundary, tag) -> tm_free_vars m @ tm_free_vars n
-  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) | TmLet (x, a, m, tag) ->
+  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) ->
       tm_free_vars a @ List.filter (( <> ) x) (tm_free_vars m)
+  | TmLet (x, a, bound_body, m, tag) ->
+      tm_free_vars a @ tm_free_vars bound_body @ List.filter (( <> ) x) (tm_free_vars m)
   | TmIf (cond, thn, els, tag) -> tm_free_vars cond @ tm_free_vars thn @ tm_free_vars els
   | TmPrim1 (op, body, tag) -> tm_free_vars body
   | TmPrim2 (op, lhs, rhs, tag) -> tm_free_vars lhs @ tm_free_vars rhs
@@ -24,8 +26,10 @@ let rec tm_meta_vars tm =
   match tm with
   | TmMeta (x, scope, tag) -> [x]
   | TmApp (m, n, app_boundary, tag) -> tm_meta_vars m @ tm_meta_vars n
-  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) | TmLet (x, a, m, tag) ->
+  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) ->
       tm_meta_vars a @ List.filter (( <> ) x) (tm_meta_vars m)
+  | TmLet (x, a, bound_body, m, tag) ->
+      tm_meta_vars a @ tm_meta_vars bound_body @ List.filter (( <> ) x) (tm_meta_vars m)
   | TmIf (cond, thn, els, tag) -> tm_meta_vars cond @ tm_meta_vars thn @ tm_meta_vars els
   | TmPrim1 (op, body, tag) -> tm_meta_vars body
   | TmPrim2 (op, lhs, rhs, tag) -> tm_meta_vars lhs @ tm_meta_vars rhs
@@ -36,8 +40,10 @@ let rec tm_meta_vars tm =
 let rec binders tm =
   match tm with
   | TmApp (m, n, app_boundary, tag) -> binders m @ binders n
-  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) | TmLet (x, a, m, tag) ->
+  | TmLambda (x, a, m, _, tag) | TmPi (x, a, m, _, tag) ->
       [x] @ binders a @ binders m
+  | TmLet (x, a, bound_body, m, tag) ->
+      [x] @ binders a @ binders bound_body @ binders m
   | TmIf (cond, thn, els, tag) -> binders cond @ binders thn @ binders els
   | TmPrim1 (op, body, tag) -> binders body
   | TmPrim2 (op, lhs, rhs, tag) -> binders lhs @ binders rhs
@@ -59,11 +65,11 @@ let rec subst_vars_in_term x m tm =
   | TmVar (y, tag) when x = y -> tag_term tag m
   | TmApp (m', n, app_boundary, tag) ->
       TmApp (subst_vars_in_term x m m', subst_vars_in_term x m n, app_boundary, tag)
-  | TmLet (y, a, n, tag) when x = y -> TmLet (y, subst_vars_in_term x m a, n, tag)
-  | TmLet (y, a, n, tag) when List.mem y (tm_free_vars m) ->
+  | TmLet (y, a, bound_body, n, tag) when x = y -> TmLet (y, subst_vars_in_term x m a, bound_body, n, tag)
+  | TmLet (y, a, bound_body, n, tag) when List.mem y (tm_free_vars m) ->
       let banlist = tm_free_vars m @ all_vars n in
       subst_vars_in_term x m (rename (freshen banlist y) tm)
-  | TmLet (y, a, n, tag) -> TmLet (y, subst_vars_in_term x m a, n, tag)
+  | TmLet (y, a, bound_body, n, tag) -> TmLet (y, subst_vars_in_term x m a, subst_vars_in_term x m bound_body, subst_vars_in_term x m n, tag)
   | TmLambda (y, a, n, binder_info, tag) when x = y ->
       TmLambda (y, subst_vars_in_term x m a, n, binder_info, tag)
   | TmLambda (y, a, n, binder_info, tag) when List.mem y (tm_free_vars m) ->
@@ -92,7 +98,7 @@ and rename x' binder =
       TmLambda (x', a, subst_vars_in_term x (TmVar (x', tag)) m, binder_info, tag)
   | TmPi (x, a, m, binder_info, tag) ->
       TmPi (x', a, subst_vars_in_term x (TmVar (x', tag)) m, binder_info, tag)
-  | TmLet (x, a, m, tag) -> TmLet (x', a, subst_vars_in_term x (TmVar (x', tag)) m, tag)
+  | TmLet (x, a, bound_body, m, tag) -> TmLet (x', a, bound_body, subst_vars_in_term x (TmVar (x', tag)) m, tag)
   | _ -> raise (InternalCompilerError "rename term failure: Given non binder")
 ;;
 
@@ -101,7 +107,7 @@ let rec subst_metas_in_term x (m : unit term) (tm : 'a term) : 'a term =
   | TmMeta (y, env, tag) when x = y -> tag_term tag m
   | TmApp (m', n, app_boundary, tag) ->
       TmApp (subst_metas_in_term x m m', subst_metas_in_term x m n, app_boundary, tag)
-  | TmLet (y, a, n, tag) -> TmLet (y, subst_metas_in_term x m a, n, tag)
+  | TmLet (y, a, bound_body, n, tag) -> TmLet (y, subst_metas_in_term x m a, subst_metas_in_term x m bound_body, subst_metas_in_term x m n, tag)
   | TmLambda (y, a, n, binder_info, tag) ->
       TmLambda (y, subst_metas_in_term x m a, subst_metas_in_term x m n, binder_info, tag)
   | TmPi (y, a, n, binder_info, tag) ->
@@ -121,12 +127,12 @@ let rec alpha_eq tm1 tm2 =
   | TmVar (x, _), TmVar (y, _) -> x = y
   | TmApp (a1, b1, app_boundary1, _), TmApp (a2, b2, app_boundary2, _) ->
       app_boundary1 = app_boundary2 && alpha_eq a1 a2 && alpha_eq b1 b2
-  | TmLet (x1, a1, m1, _), TmLet (x2, a2, m2, _) when x1 = x2 -> alpha_eq a1 a2 && alpha_eq m1 m2
+  | TmLet (x1, a1, bound_body1, m1, _), TmLet (x2, a2, bound_body2, m2, _) when x1 = x2 -> alpha_eq a1 a2 && alpha_eq m1 m2 && alpha_eq bound_body1 bound_body2
   | TmLambda (x1, a1, m1, binder_info1, _), TmLambda (x2, a2, m2, binder_info2, _) when x1 = x2 ->
       binder_info1 = binder_info2 && alpha_eq a1 a2 && alpha_eq m1 m2
   | TmPi (x1, a1, m1, binder_info1, _), TmPi (x2, a2, m2, binder_info2, _) when x1 = x2 ->
       binder_info1 = binder_info2 && alpha_eq a1 a2 && alpha_eq m1 m2
-  | TmLet (x1, a1, m1, _), TmLet (x2, a2, m2, _) ->
+  | TmLet (x1, a1, bound_body1, m1, _), TmLet (x2, a2, bound_body2, m2, _) ->
       let banlist = all_vars m1 @ all_vars m2 in
       let fresh_x = freshen banlist x1 in
       alpha_eq (rename fresh_x tm1) (rename fresh_x tm2)
@@ -169,7 +175,7 @@ let rec collect_metas tm =
   | TmLambda (_, ty, body, _, _) | TmPi (_, ty, body, _, _) ->
       StringSet.union (collect_metas ty) (collect_metas body)
   | TmApp (fn, arg, _, _) -> StringSet.union (collect_metas fn) (collect_metas arg)
-  | TmLet (_, value, body, _) -> StringSet.union (collect_metas value) (collect_metas body)
+  | TmLet (_, typ, value, body, _) -> StringSet.union (StringSet.union (collect_metas value) (collect_metas body)) (collect_metas typ)
   | TmIf (cond, thn, els, _) ->
       StringSet.union (collect_metas cond) (StringSet.union (collect_metas thn) (collect_metas els))
   | TmPrim1 (_, body, _) -> collect_metas body
@@ -197,7 +203,7 @@ let prim2_int_op op l r suff =
 
 let rec whnf tm =
   match tm with
-  | TmLet (x, value, body, _) -> whnf (subst_vars_in_term x value body)
+  | TmLet (x, typ, value, body, _) -> whnf (subst_vars_in_term x value body)
   | TmApp (fn, arg, app_boundary, tag) ->
       let fn_result = whnf fn in
       let fn' = fn_result.nr_term in
@@ -327,7 +333,7 @@ let rec normalize tm =
       let body = normalize body in
       let result = whnf (TmPrim1 (op, body.nr_term, tag)) in
       merge_results result.nr_term [head; body; result]
-  | TmLet (x, value, body, _) -> normalize (subst_vars_in_term x value body)
+  | TmLet (x, typ, value, body, _) -> normalize (subst_vars_in_term x value body)
   | TmEvidence (evidence_of, tag) ->
       let body = normalize evidence_of in
       let result = whnf (TmEvidence (body.nr_term, tag)) in
@@ -489,7 +495,7 @@ let type_synth_terms (p : sourcespan program) =
         This way, extra values can be available for type inference without any extra syntactic sugar
         or runtime erasure. It all just happens during the type inference. I'm a genius btw. *)
   let rec infer_type_elab (givens : unit term list) (env : unit term envt) (tm : 'a term) :
-      'b infer_result =
+      (sourcespan * unit term) infer_result =
     let inf_res =
       match tm with
       | TmLiteral (LitBool b, tag) ->
@@ -595,6 +601,12 @@ let type_synth_terms (p : sourcespan program) =
             inf_res_inferred_type = lam_typ;
             inf_res_subst = new_subst
           }
+      (* | TmLet (name, typ, bound_body, body, tag) ->
+          let b_inf_res = infer_type_elab givens env bound_body in
+          let new_env = apply_subst_env b_inf_res.inf_res_subst env in
+          let b_typ = apply_subst_term b_inf_res.inf_res_subst b_inf_res.inf_res_inferred_type in
+          let usubst, uresiduals = unify (untag_term b_typ) (untag_term typ) tag in
+          () *)
       | _ -> failwith "Unsupported term"
     in
     (* insert comp time evaluated ids into inferred type
