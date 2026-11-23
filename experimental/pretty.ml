@@ -121,7 +121,14 @@ and string_of_piinfo piinfo =
 
 and string_of_fun_param print_a fp =
   match fp with
-  | FPName (name, typ, piinfo, tag) -> string_of_bind print_a (BName (name, Some typ, tag))
+  | FPName (name, typ, piinfo, tag) -> (
+      let inner_str = string_of_bind print_a (BName (name, Some typ, tag)) in
+      match piinfo with
+      | Implicit -> "<" ^ inner_str ^ ">"
+      | Explicit -> inner_str
+      | Auto -> "<auto " ^ inner_str ^ ">"
+      | Constraint -> "<constraint " ^ inner_str ^ ">"
+    )
 
 (* | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")" *)
 
@@ -195,29 +202,8 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
 
 let string_of_func_sig_with depth print_a fun_sig =
-  let implicit_args =
-    List.filter
-      (fun fp ->
-        match fp with
-        | FPName (_, _, Implicit, _) -> true
-        | _ -> false )
-      fun_sig.fparams
-  in
-  let explicit_args =
-    List.filter
-      (fun fp ->
-        match fp with
-        | FPName (_, _, Explicit, _) -> true
-        | _ -> false )
-      fun_sig.fparams
-  in
-  sprintf "(def %s%s(%s)%s%s)%s" fun_sig.fname
-    (let gens = ExtString.String.join ", " (List.map (string_of_fun_param print_a) implicit_args) in
-     if List.length implicit_args > 0 then
-       "<" ^ gens ^ ">"
-     else
-       gens )
-    (ExtString.String.join ", " (List.map (string_of_fun_param print_a) explicit_args))
+  sprintf "(def %s(%s)%s%s)%s" fun_sig.fname
+    (ExtString.String.join ", " (List.map (string_of_fun_param print_a) fun_sig.fparams))
     (let typ_str = string_of_expr_with 1000 print_a fun_sig.fret_type in
      if String.length typ_str <= 0 then
        ""

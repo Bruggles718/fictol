@@ -191,8 +191,8 @@ or_chain :
   | or_chain OR binop_operand { EPrim2(Or, $1, $3, full_span())}
 
 decl :
-  | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ARROW expr { DFun({fname= $3; fparams= ($4 @ $6); fbody= None; fcall_type= $1; fret_type= $9; ftag = full_span()}) }
-  | extern_opt DEF ID generics_opt LPARENNOSPACE params_opt RPAREN ARROW expr COLON expr { DFun({fname= $3; fparams= ($4 @ $6); fbody= Some($11); fcall_type= $1; fret_type= $9; ftag = full_span()}) }
+  | extern_opt DEF ID interleaved_params ARROW expr { DFun({fname= $3; fparams= ($4 ); fbody= None; fcall_type= $1; fret_type= $6; ftag = full_span()}) }
+  | extern_opt DEF ID interleaved_params ARROW expr COLON expr { DFun({fname= $3; fparams= ($4 ); fbody= Some($8); fcall_type= $1; fret_type= $6; ftag = full_span()}) }
   // | TYPECLASS ID LESSNOSPACE ids GREATER extends_opt COLON method_sigs {
   //   DClass($2, $4, $6, $8, full_span())
   // }
@@ -228,6 +228,11 @@ ids :
   | ID { [$1] }
   | ID COMMA ids { $1::$3 }
 
+interleaved_params:
+  | params_opt { $1 }
+  | generics_opt interleaved_params { $1 @ $2 }
+  | params_opt interleaved_params { $1 @ $2 }
+
 generics_opt:
   | /* empty */ { [] }
   | LESSNOSPACE generics GREATER { $2 }
@@ -237,10 +242,10 @@ extern_opt:
   | EXTERN STRING     { Extern($2) }
 
 params_opt:
-  | /* empty */       { [] }
-  | params             { $1 }
+  | LPARENNOSPACE params RPAREN { $2 }
 
 params :
+  | /* empty */ { [] }
   | param { [$1] }
   | param COMMA params { $1::$3 }
 
@@ -269,6 +274,7 @@ generic :
 //   | generic_bounds PLUS generic_bounds { $1 @ $3 }
 
 generics :
+  | /* empty */ { [] }
   | generic { [$1] }
   | generic COMMA generics { $1::$3 }
 
