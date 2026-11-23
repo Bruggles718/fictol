@@ -482,7 +482,7 @@ let rec solve_wanted
 *)
 let compile_time_evaluated : unit term subst = []
 
-(* let type_synth_terms (p : sourcespan program) =
+let type_synth_terms (p : sourcespan program) =
   let gensym =
     let next = ref 0 in
     fun name ->
@@ -779,4 +779,4 @@ let compile_time_evaluated : unit term subst = []
     | _ -> failwith "expected universe"
   in
   ()
-;; *)
+;;
