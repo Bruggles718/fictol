@@ -623,6 +623,39 @@ let type_synth_terms (p : sourcespan program) =
             inf_res_inferred_type = final_typ;
             inf_res_subst = final_subst;
           }
+      | TmIf (cond, thn, els, tag) ->
+          let cond_inf_res = infer_type_elab givens env cond in
+          let env = apply_subst_env cond_inf_res.inf_res_subst env in
+          let thn_inf_res = infer_type_elab givens env thn in
+          let env = apply_subst_env thn_inf_res.inf_res_subst env in
+          let els_inf_res = infer_type_elab givens env els in
+          let subst_so_far = compose_subst (compose_subst cond_inf_res.inf_res_subst thn_inf_res.inf_res_subst) els_inf_res.inf_res_subst in
+          let cond_typ = apply_subst_term subst_so_far cond_inf_res.inf_res_inferred_type in
+          let thn_typ = apply_subst_term subst_so_far thn_inf_res.inf_res_inferred_type in
+          let els_typ = apply_subst_term subst_so_far els_inf_res.inf_res_inferred_type in
+          let unif_subst1, residuals1 = unify (untag_term cond_typ) (TmPrimTy(Bool, ())) tag in
+          let unif_subst2, residuals2 = unify (untag_term thn_typ) (untag_term els_typ) tag in
+          let final_subst = compose_subst (compose_subst subst_so_far unif_subst1) unif_subst2 in
+          let final_typ = apply_subst_term final_subst thn_typ in
+          let all_residuals = 
+            cond_inf_res.inf_res_residuals 
+            @ thn_inf_res.inf_res_residuals 
+            @ els_inf_res.inf_res_residuals 
+            @ residuals1
+            @ residuals2
+          in
+          {
+            inf_res_elaborated_term =
+              TmIf (
+                cond_inf_res.inf_res_elaborated_term,
+                thn_inf_res.inf_res_elaborated_term,
+                els_inf_res.inf_res_elaborated_term,
+                (tag, final_typ)
+              );
+            inf_res_residuals = all_residuals;
+            inf_res_inferred_type = final_typ;
+            inf_res_subst = final_subst;
+          }
       | _ -> failwith "Unsupported term"
     in
     (* insert comp time evaluated ids into inferred type
