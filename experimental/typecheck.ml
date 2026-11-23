@@ -601,12 +601,28 @@ let type_synth_terms (p : sourcespan program) =
             inf_res_inferred_type = lam_typ;
             inf_res_subst = new_subst
           }
-      (* | TmLet (name, typ, bound_body, body, tag) ->
+      | TmLet (name, typ, bound_body, body, tag) ->
           let b_inf_res = infer_type_elab givens env bound_body in
           let new_env = apply_subst_env b_inf_res.inf_res_subst env in
           let b_typ = apply_subst_term b_inf_res.inf_res_subst b_inf_res.inf_res_inferred_type in
-          let usubst, uresiduals = unify (untag_term b_typ) (untag_term typ) tag in
-          () *)
+          let stated_typ = infer_type_elab givens new_env typ in
+          let usubst, uresiduals = unify (untag_term b_typ) (untag_term stated_typ.inf_res_elaborated_term) tag in
+          let body_inf_res = infer_type_elab givens new_env body in
+          let final_subst = compose_subst usubst body_inf_res.inf_res_subst in
+          let final_typ = apply_subst_term final_subst body_inf_res.inf_res_inferred_type in
+          let all_residuals = b_inf_res.inf_res_residuals @ body_inf_res.inf_res_residuals in
+          {
+            inf_res_elaborated_term = 
+              TmLet(
+                name, 
+                stated_typ.inf_res_elaborated_term, 
+                b_inf_res.inf_res_elaborated_term, 
+                body_inf_res.inf_res_elaborated_term,
+                (tag, final_typ));
+            inf_res_residuals = all_residuals;
+            inf_res_inferred_type = final_typ;
+            inf_res_subst = final_subst;
+          }
       | _ -> failwith "Unsupported term"
     in
     (* insert comp time evaluated ids into inferred type
